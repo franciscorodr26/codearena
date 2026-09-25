@@ -1,0 +1,12 @@
+[build]
+buildCommand = "npm --prefix backend ci --omit=dev"
+
+[deploy]
+startCommand = "npm --prefix backend start"
+# Gate promotion on a healthy boot: Railway holds traffic on the previous
+# healthy deploy until GET /health returns 200, so a boot crash-loop in a new
+# build does not take prod down (it just fails to promote).
+healthcheckPath = "/health"
+healthcheckTimeout = 120
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CodeArena · Final Logo</title>
+<style>
+  :root { --mint:#5EEAD4; --ink:#0A0A0B; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#111114;color:#e7e7ea;padding:48px 32px 96px}
+  h1{font-size:22px;font-weight:700;margin:0 0 4px}
+  .sub{color:#9a9aa2;margin:0 0 36px;font-size:14px;max-width:680px;line-height:1.55}
+  .sub code{background:#000;padding:2px 6px;border-radius:5px;color:#cfcfd6}
+  .label{font-size:11px;color:#7a7a82;text-transform:uppercase;letter-spacing:.07em;margin:36px 0 14px;font-weight:600}
+  .hero{display:flex;gap:40px;align-items:center;flex-wrap:wrap}
+  .hero img{width:200px;height:200px}
+  .wordmark{display:flex;align-items:center;gap:18px}
+  .wordmark img{width:72px;height:72px}
+  .wordmark .t{font-size:40px;font-weight:800;letter-spacing:-.02em}
+  .wordmark .t b{color:var(--mint)}
+  .row{display:flex;align-items:flex-end;gap:24px;flex-wrap:wrap}
+  .sw{display:flex;flex-direction:column;align-items:center;gap:8px}
+  .sw small{font-size:11px;color:#7a7a82}
+  .onwhite{background:#fff;border-radius:14px;padding:18px;display:flex;gap:18px;align-items:center}
+  .og img{width:600px;max-width:100%;border-radius:12px;border:1px solid #2a2a31}
+  .grid2{display:flex;gap:20px;flex-wrap:wrap}
+  .alt{background:#1a1a1f;border:1px solid #2a2a31;border-radius:16px;padding:20px;display:flex;flex-direction:column;align-items:center;gap:12px}
+  .alt img{width:120px;height:120px}
+  .alt span{font-size:13px;color:#b9b9c2}
+  footer{margin-top:48px;color:#8a8a92;font-size:13px;line-height:1.7;max-width:760px}
+  footer code{background:#000;padding:2px 6px;border-radius:5px;color:#cfcfd6}
+</style>
+</head>
+<body>
+  <h1>CodeArena — final logo</h1>
+  <p class="sub">Your original concept, cleaned up: the black smudge is gone, the stroke is a single uniform mint weight (<code>#5EEAD4</code>) with rounded joins, and the mark is centered on the squircle. Still a "C with negative space."</p>
+
+  <div class="hero">
+    <img src="dist/android-chrome-512x512.png" alt="CodeArena mark">
+    <div class="wordmark"><img src="codearena-mark-refined.svg"><span class="t">Code<b>Arena</b></span></div>
+  </div>
+
+  <div class="label">favicon / small-size test</div>
+  <div class="row">
+    <div class="sw"><img src="dist/android-chrome-192x192.png" width="96" height="96"><small>96</small></div>
+    <div class="sw"><img src="dist/favicon-32x32.png" width="48" height="48" style="image-rendering:auto"><small>48</small></div>
+    <div class="sw"><img src="dist/favicon-32x32.png" width="32" height="32"><small>32</small></div>
+    <div class="sw"><img src="dist/favicon-16x16.png" width="16" height="16"><small>16</small></div>
+    <div class="sw onwhite"><img src="dist/apple-touch-icon.png" width="56" height="56"><img src="dist/favicon-32x32.png" width="32" height="32"></div>
+  </div>
+
+  <div class="label">social / open graph (1200×630)</div>
+  <div class="og"><img src="dist/og-image.png" alt="OG image"></div>
+
+  <div class="label">faithful vs. balanced (source SVGs)</div>
+  <div class="grid2">
+    <div class="alt"><img src="codearena-mark-refined.svg"><span><b>Faithful</b> — true to your proportions (shipping)</span></div>
+    <div class="alt"><img src="codearena-mark-balanced.svg"><span><b>Balanced</b> — gaps opened for tiny sizes</span></div>
+  </div>
+
+  <footer>
+    <b>Package contents</b> (in <code>design/logo-concepts/</code>):<br>
+    • <code>codearena-mark-refined.svg</code> — master vector (shipping)<br>
+    • <code>dist/</code> — favicon.ico, 16/32, apple-touch 180, android 192/512, og-image 1200×630<br>
+    • <code>README.md</code> — install steps · <code>install.sh</code> — copies dist/ → frontend/public/<br><br>
+    Nothing is wired into the live app yet. Running <code>install.sh</code> from the repo root swaps the icon files; the header/footer wordmark is a separate text component.
+  </footer>
+</body>
+</html>

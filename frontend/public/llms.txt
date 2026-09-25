@@ -1,0 +1,18 @@
+# CodeArena
+
+CodeArena is a developer community for practicing coding and prompting, competing in real-time human battles, and creating coding games.
+
+## Core experiences
+
+- Coding and SQL practice: https://codearena.co/practice
+- Prompt practice: https://codearena.co/practice?mode=prompting
+- Human coding and prompt battles: https://codearena.co/matchmaking
+- Problem library: https://codearena.co/problems
+- Human tournaments: https://codearena.co/tournaments
+- Rankings: https://codearena.co/players
+- CreatorArena: https://codearena.co/create
+- Community gallery: https://codearena.co/gallery
+
+CodeArena also supports friend challenges, rematches, profiles, messages, presence, notifications, and battle history.
+
+Support: support@codearena.co

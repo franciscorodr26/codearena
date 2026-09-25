@@ -1,0 +1,19 @@
+# CodeArena product reference
+
+CodeArena helps developers build skill together. Members can practice coding, SQL, and prompting solo; match with other developers for live coding or prompt battles; challenge friends directly; rematch opponents; join human tournaments and weekly challenges; climb rankings; and review their activity and battle history.
+
+The social layer includes public profiles, friends, messages, online presence, and notifications. CreatorArena lets members create coding games, while the Gallery lets the community discover and play them.
+
+## Public links
+
+- Homepage: https://codearena.co
+- Practice: https://codearena.co/practice
+- Matchmaking: https://codearena.co/matchmaking
+- Problems: https://codearena.co/problems
+- Tournaments: https://codearena.co/tournaments
+- Rankings: https://codearena.co/players
+- CreatorArena: https://codearena.co/create
+- Gallery: https://codearena.co/gallery
+- About: https://codearena.co/about
+
+Support: support@codearena.co

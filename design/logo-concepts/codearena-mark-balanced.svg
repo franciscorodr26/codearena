@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="CodeArena mark">
+  <rect x="16" y="16" width="480" height="480" rx="116" fill="#0A0A0B"/>
+  <!-- Closed mark, evened gaps for small-size legibility -->
+  <path d="M390 388 L124 388 L124 124 L390 124 L390 184 L208 184 L208 328 L390 328 Z"
+        fill="none" stroke="#5EEAD4" stroke-width="40"
+        stroke-linejoin="round" stroke-linecap="round"/>
+</svg>

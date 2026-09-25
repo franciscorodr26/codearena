@@ -1,0 +1,84 @@
+# robots.txt for CodeArena
+
+# ===========================================
+# AI Crawler Directives (LLM Discovery)
+# ===========================================
+
+User-agent: GPTBot
+Allow: /
+Allow: /llms.txt
+Allow: /llms-full.txt
+Allow: /problems/
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+Allow: /llms.txt
+Allow: /llms-full.txt
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: Anthropic-AI
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+# ===========================================
+# Standard Web Crawlers
+# ===========================================
+
+User-agent: *
+Allow: /
+
+# Allow public content pages
+Allow: /problems/
+Allow: /players
+Allow: /tournaments
+Allow: /profile/
+
+# LLM discovery files
+Allow: /llms.txt
+Allow: /llms-full.txt
+Allow: /humans.txt
+Allow: /openapi.json
+Allow: /.well-known/ai-plugin.json
+Allow: /.well-known/security.txt
+
+# Disallow admin and API routes
+Disallow: /api/
+Disallow: /admin/
+Disallow: /messages/
+
+# Disallow auth pages (not useful for search)
+Disallow: /login
+Disallow: /register
+Disallow: /verify-required
+Disallow: /complete-profile
+
+# Disallow user-specific pages that require auth
+Disallow: /friends
+Disallow: /analytics
+Disallow: /activity
+Disallow: /settings/
+
+# Allow public-facing pages (even if they require login to use fully)
+# These have landing/preview content useful for SEO
+Allow: /modes
+Allow: /practice
+Allow: /matchmaking
+Allow: /battle
+Allow: /challenge
+Allow: /bot-battle
+Allow: /gallery
+
+# Note: /profile/ is intentionally allowed for public profile pages
+
+# Sitemap location (dynamic sitemap)
+Sitemap: https://codearena.co/sitemap.xml

@@ -1,0 +1,575 @@
+/* Fonts — Satoshi for display, Inter for body, JetBrains Mono for code */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://api.fontshare.com/v2/css?f[]=satoshi@400,500,600,700&display=swap');
+/* Learn mode only: broad script coverage. Google Fonts serves each script with
+   its own unicode-range, so a learner only downloads the font for THEIR script.
+   CJK (Chinese/Japanese/Korean) relies on system fonts (Noto CJK is too heavy). */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=Noto+Sans+Myanmar:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500;700&family=Noto+Sans+Bengali:wght@400;500;700&family=Noto+Sans+Tamil:wght@400;500;700&family=Noto+Sans+Telugu:wght@400;500;700&family=Noto+Sans+Kannada:wght@400;500;700&family=Noto+Sans+Malayalam:wght@400;500;700&family=Noto+Sans+Oriya:wght@400;500;700&family=Noto+Sans+Gujarati:wght@400;500;700&family=Noto+Sans+Gurmukhi:wght@400;500;700&family=Noto+Sans+Thai:wght@400;500;700&family=Noto+Sans+Lao:wght@400;500;700&family=Noto+Sans+Khmer:wght@400;500;700&family=Noto+Sans+Sinhala:wght@400;500;700&family=Noto+Sans+Hebrew:wght@400;500;700&family=Noto+Sans+Ethiopic:wght@400;500;700&family=Noto+Sans+Georgian:wght@400;500;700&family=Noto+Sans+Armenian:wght@400;500;700&family=Noto+Sans+Thaana:wght@400;500;700&family=Noto+Sans+Tibetan:wght@400;500;700&family=Noto+Sans+Ol+Chiki:wght@400;500;700&family=Noto+Sans+Tifinagh&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ========================================
+   Learn mode scope (/learn)
+   Non-Latin script fallbacks WITHOUT changing the global brand type.
+   Code tokens keep JetBrains Mono. RTL is applied via dir= on .learn-root only.
+   ======================================== */
+.learn-root {
+  font-family: 'Satoshi', 'Inter', 'Noto Sans', 'Noto Sans Myanmar', 'Noto Sans Arabic',
+    'Noto Sans Devanagari', 'Noto Sans Bengali', 'Noto Sans Tamil', 'Noto Sans Telugu',
+    'Noto Sans Kannada', 'Noto Sans Malayalam', 'Noto Sans Oriya', 'Noto Sans Gujarati',
+    'Noto Sans Gurmukhi', 'Noto Sans Thai', 'Noto Sans Lao', 'Noto Sans Khmer',
+    'Noto Sans Sinhala', 'Noto Sans Hebrew', 'Noto Sans Ethiopic', 'Noto Sans Georgian',
+    'Noto Sans Armenian', 'Noto Sans Thaana', 'Noto Sans Tibetan', 'Noto Sans Ol Chiki',
+    'Noto Sans Tifinagh', system-ui, sans-serif;
+}
+.learn-root .font-mono {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+/* ========================================
+   CSS Custom Properties — Theme Colors
+   ======================================== */
+:root, .dark {
+  --brand-gradient: linear-gradient(90deg, #ff004e 0%, #4f2485 54%, #40d2fc 100%);
+
+  /* Surface (background/border) */
+  --color-bg: #18181b;
+  --color-bg-secondary: #18181b;
+  --color-bg-tertiary: #27272a;
+  --color-border: #3f3f46;
+  --color-border-subtle: #27272a;
+
+  /* Text */
+  --color-text: #f4f4f5;
+  --color-text-secondary: #a1a1aa;
+  --color-text-tertiary: #71717a;
+  --color-text-inverted: #09090b;
+}
+
+.light {
+  --color-bg: #ffffff;
+  --color-bg-secondary: #f4f4f5;
+  --color-bg-tertiary: #e4e4e7;
+  --color-border: #d4d4d8;
+  --color-border-subtle: #e4e4e7;
+
+  --color-text: #18181b;
+  --color-text-secondary: #52525b;
+  --color-text-tertiary: #71717a;
+  --color-text-inverted: #ffffff;
+}
+
+/* ========================================
+   Base Layer
+   ======================================== */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    overscroll-behavior: none;
+    scrollbar-gutter: stable;
+    color-scheme: dark;
+    accent-color: theme('colors.primary.500');
+  }
+
+  .light {
+    color-scheme: light;
+  }
+
+  body {
+    @apply font-sans;
+    font-weight: 500;
+    text-rendering: optimizeLegibility;
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
+    color: var(--color-text);
+    background-color: var(--color-bg);
+  }
+
+  /* MobileNav reserves space via its own spacer (see components/MobileNav.js)
+     so that pages hiding MobileNav (/battle, /matchmaking) don't get an
+     orphaned padding strip showing the body background. */
+
+  button,
+  input,
+  optgroup,
+  select,
+  textarea {
+    font: inherit;
+    letter-spacing: inherit;
+    color: inherit;
+  }
+
+  button,
+  [type='button'],
+  [type='reset'],
+  [type='submit'] {
+    -webkit-appearance: none;
+    appearance: none;
+    background-color: transparent;
+    background-image: none;
+  }
+
+  input,
+  textarea,
+  select {
+    color-scheme: inherit;
+  }
+
+  input::-ms-clear,
+  input::-ms-reveal {
+    display: none;
+  }
+
+  input[type='search']::-webkit-search-cancel-button,
+  input[type='search']::-webkit-search-decoration,
+  input[type='search']::-webkit-search-results-button,
+  input[type='search']::-webkit-search-results-decoration {
+    -webkit-appearance: none;
+  }
+
+  input:-webkit-autofill,
+  textarea:-webkit-autofill,
+  select:-webkit-autofill {
+    -webkit-text-fill-color: var(--color-text);
+    caret-color: var(--color-text);
+    box-shadow: 0 0 0 1000px var(--color-bg-tertiary) inset;
+    transition: background-color 9999s ease-in-out 0s;
+  }
+
+  /* Selection */
+  ::selection {
+    @apply bg-primary-500/20 text-white;
+  }
+
+  /* Scrollbar — thin, minimal */
+  ::-webkit-scrollbar {
+    @apply w-1.5 h-1.5;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-surface-700 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-surface-600;
+  }
+
+  /* Firefox scrollbar */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
+  }
+
+  /* Focus states — clear, accessible */
+  *:focus-visible {
+    @apply outline-none ring-2 ring-primary-500/70 ring-offset-2 ring-offset-surface-950;
+  }
+
+  /* Headings — Satoshi display font, bold weight */
+  h1, h2, h3 {
+    letter-spacing: -0.02em;
+    @apply font-display font-bold;
+  }
+
+  h4, h5, h6 {
+    letter-spacing: -0.01em;
+  }
+}
+
+/* ========================================
+   Component Layer
+   ======================================== */
+@layer components {
+  /* --- Cards --- */
+  .card-theme {
+    background-color: var(--color-bg-secondary);
+    border: 1px solid var(--color-border-subtle);
+  }
+
+  .card-theme-glass {
+    background-color: color-mix(in srgb, var(--color-bg-secondary) 60%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-border-subtle) 40%, transparent);
+  }
+
+  .glass-card {
+    @apply rounded-xl backdrop-blur-sm card-theme-glass;
+  }
+
+  .card {
+    @apply rounded-xl p-6 shadow-card card-theme;
+  }
+
+  .card-hover {
+    @apply card transition-all duration-200 hover:-translate-y-0.5;
+  }
+
+  .card-hover:hover {
+    border-color: var(--color-border);
+  }
+
+  .card-elevated {
+    @apply rounded-xl p-6 shadow-elevated card-theme;
+  }
+
+  /* --- Gradient Text --- */
+  .gradient-text {
+    @apply bg-gradient-to-r from-primary-300 to-primary-500 bg-clip-text text-transparent;
+  }
+
+  .gradient-text-brand {
+    background-image: var(--brand-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* --- Gradient Border --- */
+  .gradient-border {
+    @apply relative;
+  }
+
+  .gradient-border::before {
+    content: '';
+    @apply absolute inset-0 rounded-xl p-[1px] bg-gradient-to-r from-primary-500/60 to-primary-700/60;
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+  }
+
+  /* --- Hover effect --- */
+  .glow-hover {
+    @apply transition-all duration-200;
+  }
+
+  .glow-hover:hover {
+    @apply border-surface-600 shadow-card-hover;
+  }
+
+  /* --- Code Block --- */
+  .code-block {
+    @apply font-mono text-sm bg-surface-950 border border-surface-800 rounded-lg p-4;
+  }
+
+  /* --- Buttons --- */
+  .btn {
+    @apply inline-flex items-center justify-center px-5 py-2.5 text-sm font-medium rounded-lg transition-all duration-150 active:scale-[0.97] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-950;
+  }
+
+  .btn-primary {
+    @apply btn bg-primary-500 text-white hover:bg-primary-400 active:bg-primary-600;
+  }
+
+  .btn-secondary {
+    @apply btn bg-surface-800 text-surface-100 border border-surface-700 hover:bg-surface-700 hover:border-surface-600 active:bg-surface-800;
+  }
+
+  .btn-accent {
+    @apply btn bg-accent-500 text-white hover:bg-accent-400 active:bg-accent-600;
+  }
+
+  .btn-ghost {
+    @apply btn bg-transparent text-surface-400 hover:text-surface-100 hover:bg-surface-800/60;
+  }
+
+  .btn-outline {
+    @apply btn bg-transparent border border-primary-500/50 text-primary-400 hover:bg-primary-500/10 hover:border-primary-500;
+  }
+
+  /* --- Badges --- */
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 text-xs font-medium rounded-md;
+  }
+
+  .badge-primary {
+    @apply badge bg-primary-500/15 text-primary-400 border border-primary-500/20;
+  }
+
+  .badge-secondary {
+    @apply badge bg-secondary-500/15 text-secondary-400 border border-secondary-500/20;
+  }
+
+  .badge-success {
+    @apply badge bg-success/15 text-success-light border border-success/20;
+  }
+
+  .badge-warning {
+    @apply badge bg-warning/15 text-warning-light border border-warning/20;
+  }
+
+  .badge-error {
+    @apply badge bg-error/15 text-error-light border border-error/20;
+  }
+
+  /* --- Inputs --- */
+  .input {
+    @apply w-full px-3.5 py-2.5 bg-surface-950 border border-surface-700 rounded-lg text-surface-100 placeholder-surface-500 transition-colors duration-150 focus:border-primary-500/70 focus:ring-2 focus:ring-primary-500/15 focus:outline-none;
+  }
+
+  .input-error {
+    @apply input border-error/60 focus:border-error focus:ring-error/15;
+  }
+
+  /* --- Section Container --- */
+  .section {
+    @apply max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8;
+  }
+
+  /* --- Mesh BG --- */
+  .mesh-bg {
+    @apply bg-surface-950;
+    background-image: radial-gradient(ellipse 60% 40% at 50% 0%, rgba(20, 184, 166, 0.04), transparent);
+  }
+
+  /* iOS safe area */
+  .safe-area-inset-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+
+  /* iOS Safari URL bar shrinks viewport: 100vh = full window (including hidden URL bar area),
+     causing fixed-height pages to be cut off. dvh is the dynamic viewport that matches
+     the visible area. Override site-wide so existing min-h-screen / h-screen usage Just Works. */
+  @supports (height: 100dvh) {
+    .min-h-screen { min-height: 100dvh; }
+    .h-screen { height: 100dvh; }
+    .max-h-screen { max-height: 100dvh; }
+  }
+
+  /* Safari < 18 needs the -webkit- prefix for backdrop-filter. Tailwind only emits the
+     unprefixed property, so apply the prefix to every utility class that uses it. */
+  [class*="backdrop-blur"] {
+    -webkit-backdrop-filter: var(--tw-backdrop-blur, blur(0));
+  }
+
+  /* Animated gradient */
+  .animated-gradient {
+    background-size: 200% 200%;
+    animation: shimmer 3s linear infinite;
+  }
+}
+
+/* ========================================
+   Utility Layer
+   ======================================== */
+@layer utilities {
+  /* Text gradients */
+  .text-gradient-primary {
+    @apply bg-gradient-to-r from-primary-400 to-primary-500 bg-clip-text text-transparent;
+  }
+
+  .text-gradient-secondary {
+    @apply bg-gradient-to-r from-secondary-400 to-secondary-500 bg-clip-text text-transparent;
+  }
+
+  .text-gradient-accent {
+    @apply bg-gradient-to-r from-accent-400 to-accent-500 bg-clip-text text-transparent;
+  }
+
+  .text-gradient-rainbow {
+    @apply bg-gradient-to-r from-primary-400 via-primary-300 to-primary-500 bg-clip-text text-transparent;
+  }
+
+  .text-gradient-brand {
+    background-image: var(--brand-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Text balance for headlines */
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Animation delays */
+  .animation-delay-100 {
+    animation-delay: 100ms;
+  }
+
+  .animation-delay-200 {
+    animation-delay: 200ms;
+  }
+
+  .animation-delay-300 {
+    animation-delay: 300ms;
+  }
+
+  /* Hide scrollbar */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Animated gradient border for CTA */
+@property --border-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes border-spin {
+  to {
+    --border-angle: 360deg;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s ease-in-out infinite;
+}
+
+/* ========================================
+   Light Mode Overrides
+   ======================================== */
+.light {
+  /* Invert text colors that assume dark background */
+  --tw-text-opacity: 1;
+}
+
+/* Override surface colors in light mode for common patterns */
+.light .bg-surface-950 { background-color: #ffffff; }
+.light .bg-surface-900 { background-color: #f4f4f5; }
+.light .bg-surface-900\/80 { background-color: rgba(244, 244, 245, 0.8); }
+.light .bg-surface-900\/50 { background-color: rgba(244, 244, 245, 0.5); }
+.light .bg-surface-800 { background-color: #e4e4e7; }
+.light .bg-surface-800\/50 { background-color: rgba(228, 228, 231, 0.5); }
+.light .bg-surface-800\/60 { background-color: rgba(228, 228, 231, 0.6); }
+.light .bg-surface-700 { background-color: #d4d4d8; }
+
+.light .border-surface-800 { border-color: #e4e4e7; }
+.light .border-surface-700 { border-color: #d4d4d8; }
+.light .border-surface-700\/50 { border-color: rgba(212, 212, 216, 0.5); }
+.light .border-surface-600 { border-color: #a1a1aa; }
+
+.light .text-white { color: #18181b; }
+.light .text-surface-100 { color: #27272a; }
+.light .text-surface-200 { color: #3f3f46; }
+.light .text-surface-300 { color: #52525b; }
+.light .text-surface-400 { color: #71717a; }
+.light .text-surface-500 { color: #a1a1aa; }
+
+/* Keep actual white text on colored backgrounds */
+.light .bg-primary-500 .text-white,
+.light .bg-primary-400 .text-white,
+.light .bg-primary-500 { color: inherit; }
+.light [class*="bg-primary-5"] .text-white,
+.light [class*="bg-danger"] .text-white,
+.light [class*="bg-success"] .text-white,
+.light [class*="bg-secondary-5"] .text-white,
+.light [class*="bg-accent-5"] .text-white { color: #ffffff; }
+
+/* Buttons keep white text on colored backgrounds */
+.light button.bg-primary-500,
+.light button.bg-primary-400,
+.light a.bg-primary-500 { color: #ffffff; }
+
+/* Gradient text needs to stay gradient (not inherit inverted color) */
+.light .gradient-text { color: transparent; }
+.light .text-gradient-primary { color: transparent; }
+.light .text-gradient-brand { -webkit-text-fill-color: transparent; }
+
+/* Input fields */
+.light .bg-surface-950 input,
+.light input.bg-surface-950 { background-color: #ffffff; border-color: #d4d4d8; }
+
+/* Code editor stays dark */
+.light .monaco-editor,
+.light [class*="CodeEditor"],
+.light .code-block { background-color: #1e1e1e !important; color: #d4d4d4 !important; }
+
+/* Dashboard fallbacks for Edge/Windows forced-color rendering. */
+.dashboard-stat-icon {
+  background-color: var(--dashboard-stat-bg, #14b8a6);
+  background-image: var(--dashboard-stat-gradient, linear-gradient(135deg, #14b8a6, #0d9488));
+  color: #ffffff;
+  forced-color-adjust: none;
+}
+
+.dashboard-stat-icon svg {
+  color: #ffffff;
+  stroke: currentColor;
+}
+
+.dashboard-gradient-text {
+  color: var(--dashboard-gradient-fallback, #5eead4);
+}
+
+.dashboard-elo-value {
+  color: var(--dashboard-gradient-fallback, #5eead4);
+  -webkit-text-fill-color: var(--dashboard-gradient-fallback, #5eead4);
+  forced-color-adjust: none;
+}
+
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .dashboard-gradient-text {
+    -webkit-text-fill-color: transparent;
+  }
+}
+
+@media (forced-colors: active) {
+  .dashboard-stat-icon {
+    background-color: var(--dashboard-stat-bg, #14b8a6) !important;
+    background-image: var(--dashboard-stat-gradient, linear-gradient(135deg, #14b8a6, #0d9488)) !important;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #ffffff !important;
+  }
+
+  .dashboard-stat-icon svg {
+    color: #ffffff !important;
+  }
+
+  .dashboard-gradient-text {
+    background-image: none !important;
+    color: var(--dashboard-gradient-fallback, #5eead4) !important;
+    -webkit-text-fill-color: var(--dashboard-gradient-fallback, #5eead4) !important;
+    forced-color-adjust: none;
+  }
+
+  .dashboard-elo-value {
+    color: var(--dashboard-gradient-fallback, #5eead4) !important;
+    -webkit-text-fill-color: var(--dashboard-gradient-fallback, #5eead4) !important;
+    forced-color-adjust: none;
+  }
+}
+
+/* Shared practice layout, using CodeArena's own product colors. */
+.codearena-practice-surface {
+  --ca-product-canvas: #18181b;
+  --ca-product-deep: #09090b;
+  --ca-product-panel: #18181b;
+  --ca-product-raised: #27272a;
+  --ca-product-border: rgba(255, 255, 255, 0.12);
+  --ca-product-border-strong: rgba(45, 212, 191, 0.3);
+  --ca-product-mint: #5eead4;
+  --ca-product-action: #14b8a6;
+  --ca-product-mint-strong: #14b8a6;
+  --ca-product-ink: #fafafa;
+  --ca-product-ink-soft: #e4e4e7;
+  --ca-product-copy: #d4d4d8;
+  --ca-product-copy-muted: #d4d4d8;
+  --ca-product-muted: #a1a1aa;
+  --ca-product-quiet: #a1a1aa;
+}

@@ -1,0 +1,12 @@
+/* CodeArena */
+
+Site: https://codearena.co
+Contact: support@codearena.co
+
+CodeArena is a developer community for:
+- Coding, SQL, and prompt practice
+- Real-time human coding and prompt battles
+- Friend challenges and rematches
+- Human tournaments, challenges, and rankings
+- Profiles, friends, messages, and presence
+- CreatorArena and community-created coding games

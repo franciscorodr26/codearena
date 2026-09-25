@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1200" width="1200" height="1200" role="img" aria-label="CodeArena - The community that makes you great.">
+  <defs>
+    <radialGradient id="glow" cx="32%" cy="50%" r="55%">
+      <stop offset="0%" stop-color="#5EEAD4" stop-opacity="0.10"/>
+      <stop offset="45%" stop-color="#5EEAD4" stop-opacity="0.03"/>
+      <stop offset="100%" stop-color="#0A0A0B" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="markStroke" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#7DF3E1"/>
+      <stop offset="100%" stop-color="#5EEAD4"/>
+    </linearGradient>
+    <clipPath id="frame">
+      <rect x="0" y="0" width="1200" height="630"/>
+    </clipPath>
+  </defs>
+
+  <!-- Everything lives in the top 630px band (this region is cropped out to 1200x630). -->
+  <g clip-path="url(#frame)">
+    <!-- Full-bleed near-black background -->
+    <rect x="0" y="0" width="1200" height="630" fill="#0A0A0B"/>
+
+    <!-- Subtle radial glow for depth -->
+    <rect x="0" y="0" width="1200" height="630" fill="url(#glow)"/>
+
+    <!-- Faint hairline border for premium framing -->
+    <rect x="0.5" y="0.5" width="1199" height="629" fill="none" stroke="#1c1c1f" stroke-width="1"/>
+
+    <!-- Logo mark: 512-based path scaled to ~300px, vertically centered (center y = 315). -->
+    <!-- scale 0.586 -> 512*0.586 = 300; translate x=96, y so squircle centers at 315: 315-150=165 -->
+    <g transform="translate(96, 165) scale(0.586)">
+      <rect x="16" y="16" width="480" height="480" rx="116" fill="#0F0F11"/>
+      <path d="M390 388 L124 388 L124 124 L390 124 L390 184 L208 184 L208 328 L390 328 Z"
+            fill="none" stroke="url(#markStroke)" stroke-width="40"
+            stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+
+    <!-- Wordmark + tagline, vertically centered to the right of the mark -->
+    <g font-family="-apple-system, 'Helvetica Neue', Arial, sans-serif">
+      <text x="446" y="318" font-size="96" font-weight="800" letter-spacing="-2">
+        <tspan fill="#FFFFFF">Code</tspan><tspan fill="#5EEAD4">Arena</tspan>
+      </text>
+      <text x="448" y="378" font-size="34" font-weight="500" fill="#9aa0a6" letter-spacing="0.2">The community that makes you great.</text>
+    </g>
+  </g>
+</svg>
