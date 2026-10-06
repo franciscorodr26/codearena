@@ -38,9 +38,8 @@ describe('CodeArena open edition boundary', () => {
       'backend/services/dailyVideo.js', 'backend/services/atsFieldMappings.js', 'backend/services/assessmentNotify.js',
       'backend/services/candidateMessages.js', 'backend/services/candidatePurgeScheduler.js',
       'backend/services/webhookService.js', 'backend/services/webhookRetry.js',
-      'backend/services/agentSolver.js', 'backend/services/agentRunner.js', 'backend/services/arenaBattleRunner.js',
-      'backend/services/agentSpendingLimiter.js', 'backend/services/agentRateLimiter.js', 'backend/services/agentChallenges.js',
-      'backend/services/problemGenerator.js', 'backend/services/codeWrapper.js', 'backend/services/inputParser.js',
+      'backend/services/arenaBattleRunner.js', 'backend/routes/agentWebhooksRoutes.js', 'backend/services/urlValidator.js',
+      'frontend/components/WebhookManager.js', 'backend/services/problemGenerator.js', 'backend/services/codeWrapper.js', 'backend/services/inputParser.js',
       'backend/services/codeExecutor.js', 'backend/services/codeSanitizer.js', 'backend/services/promptJudge.js',
       'backend/calibration', 'backend/data/problems', 'backend/data/editorials.json', 'backend/data/botSolutions.js',
       'backend/data/assessmentPacks.js', 'backend/data/assessmentTemplates.json', 'backend/data/companyPrep.js',
@@ -71,20 +70,37 @@ describe('CodeArena open edition boundary', () => {
     const forbiddenMounts = [
       '/api/companies', '/api/company-challenges', '/api/assess', '/api/ats',
       '/api/reports', '/api/codepair', '/api/hiring', '/api/scheduling',
-      '/api/takehome', '/api/interview', '/api/voice-interview', '/api/agent',
+      '/api/takehome', '/api/interview', '/api/voice-interview',
       '/api/arena', '/api/centaur', '/api/build-challenge', '/api/lessons',
       '/api/learn', '/api/ai-critique', '/api/verification-problems', '/api/campaign',
       '/api/webhooks', '/api/editorials', '/api/prompting-problems'
     ];
     for (const mount of forbiddenMounts) expect(serverSource).not.toContain(`app.use('${mount}'`);
-    expect(serverSource).not.toContain('AGENT_PRODUCT_ENABLED');
-    expect(serverSource).not.toContain('agentMatchmakingQueue');
     expect(serverSource).not.toContain('webhookService');
-    expect(adminSource).not.toContain('agent-battles');
+    expect(serverSource).not.toContain('problemGenerator');
     expect(adminSource).not.toContain('centaur-stats');
     expect(schedulerSource).not.toContain('agentChallenges');
     expect(schedulerSource).not.toContain('Webhook retry queue processing scheduled');
     expect(schedulerSource).not.toContain('emailRetryQueueTask');
+  });
+
+  test('agent battles are revived but off unless the operator enables them', () => {
+    expect(serverSource).toContain("const AGENT_PRODUCT_ENABLED = process.env.CODEARENA_AGENT_BATTLES === '1' && Boolean(process.env.ANTHROPIC_API_KEY);");
+    for (const mount of ['/api/agent/tournaments', '/api/agent/training', '/api/agent']) {
+      expect(serverSource).toMatch(new RegExp(`app\\.use\\('${mount.replace(/\//g, '\\/')}', requireAgentBattles,`));
+    }
+    expect(adminSource).toContain("router.use('/agent-battles', (req, res, next) => (process.env.CODEARENA_AGENT_BATTLES === '1'");
+    for (const file of ['backend/routes/agentBattle.js', 'backend/routes/agentTraining.js', 'backend/routes/agentTrainingRoutes.js', 'backend/routes/agentBattleUtils.js']) {
+      const source = read(file);
+      expect(source).not.toMatch(/'data', 'problems'/);
+      expect(source).not.toContain('problemGenerator');
+      expect(source).not.toContain('agentWebhooksRoutes');
+    }
+    expect(read('backend/services/agentSolver.js')).not.toContain("require('./codeExecutor')");
+    const pages = ['agent-battles.js', 'agent-battles/live.js', 'agent-battles/training.js', 'agent-battle/[id].js', 'agent-history.js',
+      'agent-leaderboard.js', 'agent-matchmaking.js', 'agent-replay/[id].js', 'agent-spectate.js', 'agent-tournaments/index.js',
+      'agent-tournaments/[id].js', 'agent-battles/training/[runId].js', 'admin/agent-battles.js'];
+    for (const page of pages) expect(read(`frontend/pages/${page}`)).toContain('<AgentBattlesGate>');
   });
 
   test('problems come only from the open set and hidden tests stay server-side', () => {
@@ -103,9 +119,7 @@ describe('CodeArena open edition boundary', () => {
   test('forbidden frontend product routes are absent', () => {
     const forbidden = [
       'company', 'assess', 'codepair', 'schedule', 'shared-report', 'takehome',
-      'challenge-invite', 'agent-battle', 'agent-battles', 'agent-history.js',
-      'agent-leaderboard.js', 'agent-matchmaking.js', 'agent-replay',
-      'agent-spectate.js', 'agent-tournaments', 'arena.js', 'build-challenge.js',
+      'challenge-invite', 'arena.js', 'build-challenge.js',
       'centaur.js', 'coach.js', 'critique', 'learn', 'prep', 'my-interviews.js',
       'contact-sales.js', 'for-companies.js', 'try-ai-critique.js'
     ];

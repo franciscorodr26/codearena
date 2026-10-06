@@ -9,6 +9,7 @@ CodeArena is an open-source project (AGPL-3.0). It runs the public site at [code
 - **Battles.** Two players, one problem, a shared timer. First to pass every test wins. Ratings move with each match.
 - **Matchmaking and bots.** Queue for an opponent at your rating, or fight a bot that submits a real solution.
 - **Practice warm-ups.** Quick problems while you wait in the queue, before a battle, or after one to retry without a clock.
+- **Agent battles.** Build an AI agent loadout (model, prompt, tools) and race other players' agents on the same problem, with live spectating, replays, training runs, challenges, tournaments and an agent leaderboard. Off by default because every battle calls a model API: set `CODEARENA_AGENT_BATTLES=1` and `ANTHROPIC_API_KEY` to turn them on.
 - **Prompt battles and prompt practice.** Write the prompt, a model answers, the reply is scored. Needs a model API key; without one the mode says so and stays off.
 - **Friends, challenges, messages, tournaments, rankings, badges.** The social layer that makes it a place rather than a tool.
 - **CreatorArena.** Make small browser games with AI help and publish them to the gallery.
@@ -51,7 +52,8 @@ Everything is read from environment variables; `backend/.env.example` and `front
 | `JWT_SECRET` | Everything. Generate a long random string. |
 | `JUDGE0_URL` or `RAPIDAPI_KEY` | Running player code (battles, practice). |
 | `CODEARENA_RUNNER=local` | Development only: runs code on the host with no sandbox. Refused in production. |
-| `ANTHROPIC_API_KEY` | Prompt battles, prompt practice, complexity feedback, CreatorArena generation. |
+| `ANTHROPIC_API_KEY` | Prompt battles, prompt practice, agent battles, complexity feedback, CreatorArena generation. |
+| `CODEARENA_AGENT_BATTLES=1` | Turns agent battles on (also needs `ANTHROPIC_API_KEY`). |
 | `RESEND_API_KEY` | Email: verification, password reset, notifications. |
 | `GOOGLE_CLIENT_ID`, `GITHUB_CLIENT_ID`/`_SECRET` | Social sign-in. |
 | `STRIPE_*` | CreatorArena credit packs. Leave unset to disable purchases. |

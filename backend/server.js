@@ -58,6 +58,10 @@ const elo = require('./elo');
 
 // Anti-Cheat Service
 const antiCheat = require('./services/antiCheat');
+// Agent Battle Rate Limiter
+const { checkAgentBattleRateLimit, getRateLimitStatus, refundRateLimitSlot, cleanupExpiredRateLimits } = require('./services/agentRateLimiter');
+// Agent Battle Spending Limiter (cost control)
+const { checkSpendingLimit, reserveSpending, releaseReservation, recordSpending, refundSpending, getSpendingStatus } = require('./services/agentSpendingLimiter');
 
 
 // Trust Tier Service (v2 consequence-based)
@@ -78,6 +82,9 @@ const anthropicServer = process.env.ANTHROPIC_API_KEY ? new Anthropic({ apiKey: 
 
 // Bot matchmaking threshold (15 seconds)
 const BOT_MATCH_THRESHOLD = 15000;
+// Agent battles call a paid model API, so they are off unless the operator
+// turns them on: CODEARENA_AGENT_BATTLES=1 and an ANTHROPIC_API_KEY.
+const AGENT_PRODUCT_ENABLED = process.env.CODEARENA_AGENT_BATTLES === '1' && Boolean(process.env.ANTHROPIC_API_KEY);
 
 // Helper to optionally extract userId from Authorization header
 function extractUserFromToken(req) {
@@ -1154,6 +1161,9 @@ const newsletterRouter = require('./routes/newsletter');
 const avatarUploadRouter = require('./routes/avatarUpload');
 const aiRouter = require('./routes/ai');
 const gamesRouter = require('./routes/games');
+const agentBattleRouter = require('./routes/agentBattle');
+const agentTournamentRouter = require('./routes/agentTournament');
+const agentTrainingRouter = require('./routes/agentTraining');
 const scheduler = require('./services/scheduler');
 const badgeService = require('./services/badgeService');
 // Helper: create in-app notifications for newly awarded badges
@@ -1198,6 +1208,11 @@ app.use('/api/prompt-battle', promptBattleRouter);
 app.use('/api/prompt-practice', promptPracticeRouter);
 app.use('/api/newsletter', newsletterRouter);
 app.use('/api/games', gamesRouter);
+// Agent battles are off unless the operator enables them (see AGENT_PRODUCT_ENABLED).
+const requireAgentBattles = (req, res, next) => (AGENT_PRODUCT_ENABLED ? next() : res.status(503).json({ notEnabled: true, error: 'Agent battles are not enabled on this server.' }));
+app.use('/api/agent/tournaments', requireAgentBattles, agentTournamentRouter);
+app.use('/api/agent/training', requireAgentBattles, agentTrainingRouter);
+app.use('/api/agent', requireAgentBattles, agentBattleRouter);
 app.use('/api/search', require('./routes/search'));
 app.use('/api/ai', aiRouter);
 
@@ -10586,6 +10601,2389 @@ io.on('connection', (socket) => {
       socket.emit('tournament-error', { error: 'Failed to ready up' });
     }
   });
+
+  // =====================================================
+  // AGENT BATTLES - Matchmaking for AI agent battles
+  // =====================================================
+
+  if (AGENT_PRODUCT_ENABLED) {
+
+  // Agent queue data structure (at module level, but we'll track per socket)
+  if (!global.agentMatchmakingQueue) {
+    global.agentMatchmakingQueue = new Map();
+  }
+
+  // Matchmaking locks to prevent double-matching
+  if (!global.agentMatchmakingLocks) {
+    global.agentMatchmakingLocks = new Set();
+  }
+
+  // Rematch locks to prevent duplicate rematch battles
+  if (!global.agentRematchLocks) {
+    global.agentRematchLocks = new Set();
+  }
+
+  // Timer tracking for cleanup on shutdown (Medium #9 fix)
+  if (!global.agentCleanupTimers) {
+    global.agentCleanupTimers = new Map(); // battleId -> timerId
+  }
+
+  // =====================================================
+  // AGENT BATTLE MEMORY MANAGEMENT - Cleanup intervals
+  // =====================================================
+
+  // Constants for agent battle cleanup
+  const MAX_AGENT_BATTLES = 500; // Max active agent battles
+  const MAX_SPECTATORS_PER_BATTLE = 100; // Max spectators per battle to prevent unbounded growth
+  const AGENT_BATTLE_MAX_AGE_MS = 30 * 60 * 1000; // 30 minutes max lifetime
+  const AGENT_QUEUE_IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes idle timeout
+  const AGENT_LOCK_ORPHAN_TIMEOUT_MS = 30 * 1000; // 30 seconds for orphaned locks
+  const AGENT_CLEANUP_INTERVAL_MS = 60 * 1000; // Run cleanup every minute
+
+  // Initialize cleanup tracking
+  if (!global.agentLockTimestamps) {
+    global.agentLockTimestamps = new Map(); // userId -> timestamp when lock was acquired
+  }
+  if (!global.agentQueueTimestamps) {
+    global.agentQueueTimestamps = new Map(); // userId -> timestamp when joined queue
+  }
+
+  // Cleanup function for agent battles
+  function cleanupAgentBattles() {
+    try {
+      if (!global.agentBattles) return;
+
+      const now = Date.now();
+      let cleanedCount = 0;
+
+      for (const [battleId, battle] of global.agentBattles.entries()) {
+        const age = now - (battle.createdAt || 0);
+        let shouldDelete = false;
+
+        // 1. Finished battles older than 5 minutes
+        if (battle.state === 'finished' && age > 5 * 60 * 1000) {
+          shouldDelete = true;
+        }
+        // 2. Any battle older than max age
+        else if (age > AGENT_BATTLE_MAX_AGE_MS) {
+          shouldDelete = true;
+        }
+
+        if (shouldDelete) {
+          global.agentBattles.delete(battleId);
+          global.agentRematchRequests?.delete(battleId);
+          global.agentCleanupTimers?.delete(battleId);
+          cleanedCount++;
+        }
+      }
+
+      // Evict oldest finished if still over capacity
+      if (global.agentBattles.size > MAX_AGENT_BATTLES) {
+        const finishedBattles = [];
+        for (const [id, battle] of global.agentBattles.entries()) {
+          if (battle.state === 'finished') {
+            finishedBattles.push({ id, createdAt: battle.createdAt || 0 });
+          }
+        }
+        finishedBattles.sort((a, b) => a.createdAt - b.createdAt);
+        const toDelete = Math.min(finishedBattles.length, global.agentBattles.size - MAX_AGENT_BATTLES + 50);
+        for (let i = 0; i < toDelete; i++) {
+          global.agentBattles.delete(finishedBattles[i].id);
+          global.agentRematchRequests?.delete(finishedBattles[i].id);
+          cleanedCount++;
+        }
+      }
+
+      if (cleanedCount > 0) {
+        logger.info(`[Agent Cleanup] Removed ${cleanedCount} agent battles. Remaining: ${global.agentBattles.size}`);
+      }
+    } catch (error) {
+      logger.error('[Agent Cleanup] Error cleaning agent battles:', error);
+    }
+  }
+
+  // Cleanup function for agent queue (idle timeout)
+  function cleanupAgentQueue() {
+    try {
+      if (!global.agentMatchmakingQueue) return;
+
+      const now = Date.now();
+      let cleanedCount = 0;
+
+      for (const [odlUserId, entry] of global.agentMatchmakingQueue.entries()) {
+        const joinedAt = global.agentQueueTimestamps?.get(odlUserId) || entry.joinedAt || 0;
+        if (now - joinedAt > AGENT_QUEUE_IDLE_TIMEOUT_MS) {
+          // Bug 4 follow-up: refund the held reservation on idle timeout.
+          if (entry.reservationId) {
+            releaseReservation(entry.reservationId).catch(refundErr => {
+              logger.warn(`[Agent Cleanup] releaseReservation failed for idle user=${odlUserId}: ${refundErr.message}`);
+            });
+          }
+          global.agentMatchmakingQueue.delete(odlUserId);
+          global.agentQueueTimestamps?.delete(odlUserId);
+          cleanedCount++;
+        }
+      }
+
+      if (cleanedCount > 0) {
+        logger.info(`[Agent Cleanup] Removed ${cleanedCount} idle queue entries. Remaining: ${global.agentMatchmakingQueue.size}`);
+      }
+    } catch (error) {
+      logger.error('[Agent Cleanup] Error cleaning agent queue:', error);
+    }
+  }
+
+  // Cleanup function for orphaned matchmaking locks
+  function cleanupAgentLocks() {
+    try {
+      if (!global.agentMatchmakingLocks || !global.agentLockTimestamps) return;
+
+      const now = Date.now();
+      let cleanedCount = 0;
+
+      for (const userId of global.agentMatchmakingLocks) {
+        const lockTime = global.agentLockTimestamps.get(userId) || 0;
+        if (lockTime > 0 && now - lockTime > AGENT_LOCK_ORPHAN_TIMEOUT_MS) {
+          global.agentMatchmakingLocks.delete(userId);
+          global.agentLockTimestamps.delete(userId);
+          cleanedCount++;
+        }
+      }
+
+      if (cleanedCount > 0) {
+        logger.info(`[Agent Cleanup] Removed ${cleanedCount} orphaned locks`);
+      }
+    } catch (error) {
+      logger.error('[Agent Cleanup] Error cleaning agent locks:', error);
+    }
+  }
+
+  // Cleanup function for expired rate limit entries in database
+  async function cleanupRateLimits() {
+    try {
+      const deletedCount = await cleanupExpiredRateLimits();
+      if (deletedCount > 0) {
+        logger.info(`[Agent Cleanup] Purged ${deletedCount} expired rate limit entries`);
+      }
+    } catch (error) {
+      logger.error('[Agent Cleanup] Error cleaning rate limits:', error);
+    }
+  }
+
+  // Combined cleanup function
+  function runAgentCleanup() {
+    cleanupAgentBattles();
+    cleanupAgentQueue();
+    cleanupAgentLocks();
+    cleanupRateLimits();
+  }
+
+  // Start cleanup interval (only once per server, not per socket)
+  if (!global.agentCleanupIntervalStarted) {
+    global.agentCleanupIntervalStarted = true;
+    setInterval(runAgentCleanup, AGENT_CLEANUP_INTERVAL_MS);
+    // Run once after 30 seconds to clean up any stale data from previous session
+    setTimeout(runAgentCleanup, 30000);
+    logger.info('[Agent Cleanup] Memory management cleanup interval started');
+  }
+
+  // Join agent battle queue
+  socket.on('join-agent-queue', async ({ loadout, loadoutId, preferences }) => {
+    try {
+      const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+      if (!token) {
+        socket.emit('agent-queue-error', { error: 'Not authenticated' });
+        return;
+      }
+
+      const jwtLib = require('jsonwebtoken');
+      const decoded = jwtLib.verify(token, SECRET);
+      const userId = decoded.sub;
+
+      // Get user info
+      const user = await dbHelper.getUserById(userId);
+      if (!user) {
+        socket.emit('agent-queue-error', { error: 'User not found' });
+        return;
+      }
+
+      // Check if user is banned from agent battles
+      const ban = await dbHelper.get(
+        `SELECT * FROM agent_battle_bans
+         WHERE user_id = ? AND banned_until > datetime('now')
+         ORDER BY banned_until DESC
+         LIMIT 1`,
+        [userId]
+      );
+
+      if (ban) {
+        const bannedUntil = new Date(ban.banned_until);
+        const hoursRemaining = Math.ceil((bannedUntil - new Date()) / (1000 * 60 * 60));
+        socket.emit('agent-queue-error', {
+          error: `You are temporarily banned from agent battles. Reason: ${ban.reason}. Ban expires in ${hoursRemaining} hour${hoursRemaining !== 1 ? 's' : ''}.`
+        });
+        return;
+      }
+
+      // Validate and sanitize preferences
+      const sanitizedPreferences = {
+        modelPreference: preferences?.modelPreference || 'any',
+        eloRange: preferences?.eloRange || 'any',
+        customEloMin: preferences?.customEloMin || null,
+        customEloMax: preferences?.customEloMax || null,
+        difficulty: preferences?.difficulty || 'any'
+      };
+
+      // Security: Validate preference values
+      const validModelPreferences = ['any', 'same-model-only', 'haiku', 'sonnet', 'opus'];
+      const validEloRanges = ['any', 'similar', 'custom'];
+      const validDifficulties = ['any', 'easy', 'medium', 'hard'];
+
+      if (!validModelPreferences.includes(sanitizedPreferences.modelPreference)) {
+        socket.emit('agent-queue-error', { error: 'Invalid model preference' });
+        return;
+      }
+
+      if (!validEloRanges.includes(sanitizedPreferences.eloRange)) {
+        socket.emit('agent-queue-error', { error: 'Invalid ELO range preference' });
+        return;
+      }
+
+      if (!validDifficulties.includes(sanitizedPreferences.difficulty)) {
+        socket.emit('agent-queue-error', { error: 'Invalid difficulty preference' });
+        return;
+      }
+
+      // Validate custom ELO range if specified
+      if (sanitizedPreferences.eloRange === 'custom') {
+        if (typeof sanitizedPreferences.customEloMin !== 'number' ||
+            typeof sanitizedPreferences.customEloMax !== 'number' ||
+            sanitizedPreferences.customEloMin < 0 ||
+            sanitizedPreferences.customEloMax > 3000 ||
+            sanitizedPreferences.customEloMin >= sanitizedPreferences.customEloMax) {
+          socket.emit('agent-queue-error', { error: 'Invalid custom ELO range' });
+          return;
+        }
+      }
+
+      // Check rate limit (pass model for model-specific limits)
+      const isPro = await dbHelper.isUserPro(userId);
+      const model = loadout?.model || 'sonnet'; // Default to sonnet if not specified
+      const rateLimitResult = await checkAgentBattleRateLimit(userId, isPro, model);
+
+      if (!rateLimitResult.allowed) {
+        const errorMessage = rateLimitResult.modelLimit
+          ? `${rateLimitResult.modelLimit.charAt(0).toUpperCase() + rateLimitResult.modelLimit.slice(1)} model limit exceeded. ${isPro ? 'Pro' : 'Free'} users can create ${rateLimitResult.limit} ${rateLimitResult.modelLimit} battles per hour. Please try again in ${rateLimitResult.minutesUntilReset} minute${rateLimitResult.minutesUntilReset !== 1 ? 's' : ''}.`
+          : `Rate limit exceeded. ${isPro ? 'Pro' : 'Free'} users can create ${rateLimitResult.limit} agent battles per hour. Please try again in ${rateLimitResult.minutesUntilReset} minute${rateLimitResult.minutesUntilReset !== 1 ? 's' : ''}.`;
+
+        socket.emit('agent-queue-error', {
+          error: errorMessage,
+          rateLimitExceeded: true,
+          limit: rateLimitResult.limit,
+          remaining: 0,
+          resetTime: rateLimitResult.resetTime,
+          minutesUntilReset: rateLimitResult.minutesUntilReset,
+          modelLimit: rateLimitResult.modelLimit
+        });
+        logger.warn(`[Agent Queue] Rate limit exceeded for user ${userId} (${isPro ? 'Pro' : 'Free'}) - ${rateLimitResult.modelLimit ? `${rateLimitResult.modelLimit} model` : 'overall'}`);
+        return;
+      }
+
+      // M8 fix: atomically check + commit spend at admission (closes the TOCTOU
+      // window where N concurrent joins could each pass a read-only check).
+      // Cost is committed inside reserveSpending; we drop the redundant
+      // recordSpending at battle completion to avoid double-charging.
+      const spendingResult = await reserveSpending(userId, loadout?.model, isPro);
+      if (!spendingResult.ok) {
+        socket.emit('agent-queue-error', {
+          error: spendingResult.reason,
+          spendingLimitExceeded: true,
+          dailySpend: spendingResult.dailySpend,
+          dailyLimit: spendingResult.dailyLimit,
+          monthlySpend: spendingResult.monthlySpend,
+          monthlyLimit: spendingResult.monthlyLimit
+        });
+        logger.warn(`[Agent Queue] Spending limit exceeded for user ${userId}: ${spendingResult.reason}`);
+        return;
+      }
+
+      // Bug 4 follow-up: refund the just-committed reservation on every
+      // abandonment path between here and queue admission (invalid loadout,
+      // already-in-battle, etc.). Ownership transfers to queueEntry once we
+      // successfully queue.set; from that point downstream handlers (leave,
+      // disconnect, idle sweep) refund via the entry's reservationId.
+      let pendingReservationId = spendingResult.reservationId;
+      try {
+
+      // Check if user is already being matched
+      if (global.agentMatchmakingLocks.has(userId)) {
+        socket.emit('agent-queue-error', { error: 'Already matching with another player' });
+        logger.warn(`[Agent Queue] User ${userId} tried to join queue while already being matched`);
+        return;
+      }
+
+      // Check if user is already in an active battle
+      if (global.agentBattles) {
+        for (const [battleId, battle] of global.agentBattles.entries()) {
+          if ((battle.state === 'matched' || battle.state === 'running') &&
+              battle.players.some(p => p.userId === userId)) {
+            socket.emit('agent-queue-error', { error: 'Already in an active battle' });
+            logger.warn(`[Agent Queue] User ${userId} tried to join queue while in battle ${battleId}`);
+            return;
+          }
+        }
+      }
+
+      // Security: Validate loadout configuration
+      if (!loadout || !loadout.model || !loadout.language) {
+        socket.emit('agent-queue-error', { error: 'Invalid loadout configuration' });
+        return;
+      }
+
+      // Security: Validate model
+      const validModels = ['haiku', 'sonnet', 'opus'];
+      if (!validModels.includes(loadout.model.toLowerCase())) {
+        socket.emit('agent-queue-error', { error: 'Invalid model' });
+        return;
+      }
+
+      // Security: Validate language
+      const validLanguages = ['python', 'javascript', 'typescript', 'java', 'cpp', 'c', 'csharp', 'go', 'rust', 'sql'];
+      if (!validLanguages.includes(loadout.language.toLowerCase())) {
+        socket.emit('agent-queue-error', { error: 'Invalid language' });
+        return;
+      }
+
+      // Security: Validate system prompt length
+      if (loadout.systemPrompt && loadout.systemPrompt.length > 2000) {
+        socket.emit('agent-queue-error', { error: 'System prompt too long (max 2000 chars)' });
+        return;
+      }
+
+      // Security: Validate and sanitize tools
+      const validTools = ['run_code', 'auto_retry', 'docs_lookup'];
+      let sanitizedTools = [];
+      if (Array.isArray(loadout.tools)) {
+        sanitizedTools = loadout.tools.filter(t => typeof t === 'string' && validTools.includes(t)).slice(0, 2);
+      }
+
+      let dbLoadoutId = loadoutId;
+      let activeVersionId = null;
+
+      // If loadoutId is provided, verify it exists and belongs to user
+      if (loadoutId) {
+        const existingLoadout = await dbHelper.get(
+          'SELECT id, elo FROM agent_loadouts WHERE id = ? AND user_id = ?',
+          [loadoutId, userId]
+        );
+
+        if (!existingLoadout) {
+          socket.emit('agent-queue-error', { error: 'Loadout not found or does not belong to you' });
+          return;
+        }
+
+        // Get the active version for this loadout
+        const activeVersion = await dbHelper.get(
+          'SELECT id FROM agent_loadout_versions WHERE loadout_id = ? AND is_active = 1',
+          [loadoutId]
+        );
+        activeVersionId = activeVersion?.id || null;
+      } else {
+        // No loadoutId provided, create a temporary loadout in the database
+        dbLoadoutId = uuidv4();
+
+        try {
+          await dbHelper.run(
+            `INSERT INTO agent_loadouts (id, user_id, name, model, system_prompt, language, tools, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+            [
+              dbLoadoutId,
+              userId,
+              `Temp Loadout ${Date.now()}`,
+              loadout.model.toLowerCase(),
+              loadout.systemPrompt || '',
+              loadout.language.toLowerCase(),
+              JSON.stringify(sanitizedTools)
+            ]
+          );
+
+          // Create version 1 for this temporary loadout
+          activeVersionId = uuidv4();
+          await dbHelper.run(
+            `INSERT INTO agent_loadout_versions (id, loadout_id, version_number, system_prompt, model, language, tools, is_active, created_at)
+             VALUES (?, ?, 1, ?, ?, ?, ?, 1, datetime('now'))`,
+            [
+              activeVersionId,
+              dbLoadoutId,
+              loadout.systemPrompt || '',
+              loadout.model.toLowerCase(),
+              loadout.language.toLowerCase(),
+              JSON.stringify(sanitizedTools)
+            ]
+          );
+          logger.info(`[Agent Queue] Created temporary loadout ${dbLoadoutId} with version ${activeVersionId} for user ${userId}`);
+        } catch (dbErr) {
+          logger.error(`[Agent Queue] Failed to create loadout: ${dbErr.message}`, dbErr);
+          socket.emit('agent-queue-error', { error: `Failed to save loadout: ${dbErr.message}` });
+          return;
+        }
+      }
+
+      // Get loadout ELO for matchmaking
+      const loadoutData = await dbHelper.get(
+        'SELECT elo FROM agent_loadouts WHERE id = ?',
+        [dbLoadoutId]
+      );
+      const loadoutElo = loadoutData?.elo || 1000;
+
+      // Add to queue with real database loadout ID and sanitized values
+      const queueEntry = {
+        loadoutId: dbLoadoutId,
+        versionId: activeVersionId,
+        socketId: socket.id,
+        userId,
+        username: user.username,
+        loadout: {
+          model: loadout.model.toLowerCase(),
+          language: loadout.language.toLowerCase(),
+          tools: sanitizedTools,
+          systemPrompt: loadout.systemPrompt || ''
+        },
+        elo: loadoutElo,
+        preferences: sanitizedPreferences,
+        joinedAt: Date.now(),
+        expandedSearchAt: null,
+        isMatching: false
+      };
+
+      // Transfer reservation ownership to the queue entry so any downstream
+      // abandonment (leave, disconnect, idle sweep) can refund correctly.
+      queueEntry.reservationId = pendingReservationId;
+      pendingReservationId = null;
+      global.agentMatchmakingQueue.set(userId, queueEntry);
+      // Track queue timestamp for idle cleanup
+      if (global.agentQueueTimestamps) {
+        global.agentQueueTimestamps.set(userId, Date.now());
+      }
+      logger.info(`[Agent Queue] ${user.username} joined queue with ${loadout.model} agent (loadout ID: ${dbLoadoutId}) - ${rateLimitResult.remaining}/${rateLimitResult.limit} battles remaining`);
+
+      // Calculate how many players match preferences
+      const matchingPlayersCount = countMatchingPlayers(queueEntry, global.agentMatchmakingQueue);
+
+      // Send queue update (position = queue size since they just joined at the end)
+      socket.emit('agent-queue-update', {
+        position: global.agentMatchmakingQueue.size,
+        playersInQueue: global.agentMatchmakingQueue.size,
+        matchingPlayersCount,
+        rateLimit: {
+          remaining: rateLimitResult.remaining,
+          limit: rateLimitResult.limit,
+          resetTime: rateLimitResult.resetTime
+        }
+      });
+
+      // Try to match players
+      tryAgentMatch(socket, userId);
+      } finally {
+        // Refund if the reservation was never transferred to a queue entry
+        // (e.g. an early-return before queue.set, or an exception below).
+        if (pendingReservationId) {
+          releaseReservation(pendingReservationId).catch(refundErr => {
+            logger.warn(`[Agent Queue] releaseReservation failed for abandoned admission user=${userId}: ${refundErr.message}`);
+          });
+        }
+      }
+    } catch (err) {
+      logger.error('[Agent Queue] Join error:', err);
+      socket.emit('agent-queue-error', { error: `Failed to join queue: ${err.message}` });
+    }
+  });
+
+  // Leave agent battle queue
+  socket.on('leave-agent-queue', async () => {
+    try {
+      const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+      if (!token) return;
+
+      const jwtLib = require('jsonwebtoken');
+      const decoded = jwtLib.verify(token, SECRET);
+      const userId = decoded.sub;
+
+      if (global.agentMatchmakingQueue.has(userId)) {
+        const entry = global.agentMatchmakingQueue.get(userId);
+        // Bug 4 follow-up: refund the held reservation on explicit leave.
+        if (entry?.reservationId) {
+          releaseReservation(entry.reservationId).catch(refundErr => {
+            logger.warn(`[Agent Queue] releaseReservation failed on leave user=${userId}: ${refundErr.message}`);
+          });
+        }
+        global.agentMatchmakingQueue.delete(userId);
+        logger.info(`[Agent Queue] User ${userId} left queue`);
+      }
+    } catch (err) {
+      logger.error('[Agent Queue] Leave error:', err);
+    }
+  });
+
+  // Helper function to check if two players match preferences
+  function checkPreferenceMatch(player1, player2) {
+    const p1Prefs = player1.preferences;
+    const p2Prefs = player2.preferences;
+
+    // Check model preferences
+    const modelMatch = checkModelPreference(player1, player2);
+    if (!modelMatch) return { matches: false, reason: 'model' };
+
+    // Check ELO range preferences
+    const eloMatch = checkEloPreference(player1, player2);
+    if (!eloMatch) return { matches: false, reason: 'elo' };
+
+    // Difficulty preference is applied to problem selection, not player matching
+    // So we don't check it here
+
+    return { matches: true, reason: null };
+  }
+
+  function checkModelPreference(player1, player2) {
+    const p1Prefs = player1.preferences;
+    const p2Prefs = player2.preferences;
+
+    // Check player 1's preferences
+    if (p1Prefs.modelPreference === 'same-model-only') {
+      if (player1.loadout.model !== player2.loadout.model) return false;
+    } else if (p1Prefs.modelPreference !== 'any') {
+      // Specific model preference (haiku, sonnet, opus)
+      if (player2.loadout.model !== p1Prefs.modelPreference) return false;
+    }
+
+    // Check player 2's preferences
+    if (p2Prefs.modelPreference === 'same-model-only') {
+      if (player2.loadout.model !== player1.loadout.model) return false;
+    } else if (p2Prefs.modelPreference !== 'any') {
+      // Specific model preference (haiku, sonnet, opus)
+      if (player1.loadout.model !== p2Prefs.modelPreference) return false;
+    }
+
+    return true;
+  }
+
+  function checkEloPreference(player1, player2) {
+    const p1Prefs = player1.preferences;
+    const p2Prefs = player2.preferences;
+
+    // Check player 1's ELO preference
+    if (p1Prefs.eloRange === 'similar') {
+      const eloDiff = Math.abs(player1.elo - player2.elo);
+      if (eloDiff > 200) return false;
+    } else if (p1Prefs.eloRange === 'custom') {
+      if (player2.elo < p1Prefs.customEloMin || player2.elo > p1Prefs.customEloMax) {
+        return false;
+      }
+    }
+
+    // Check player 2's ELO preference
+    if (p2Prefs.eloRange === 'similar') {
+      const eloDiff = Math.abs(player2.elo - player1.elo);
+      if (eloDiff > 200) return false;
+    } else if (p2Prefs.eloRange === 'custom') {
+      if (player1.elo < p2Prefs.customEloMin || player1.elo > p2Prefs.customEloMax) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  // Helper function to count how many players in queue match a player's preferences
+  function countMatchingPlayers(player, queue) {
+    let count = 0;
+    for (const [userId, otherPlayer] of queue.entries()) {
+      if (userId === player.userId) continue;
+      const match = checkPreferenceMatch(player, otherPlayer);
+      if (match.matches) count++;
+    }
+    return count;
+  }
+
+  // Helper function to check if preferences should be expanded (after timeout)
+  function shouldExpandSearch(queueEntry) {
+    const EXPAND_SEARCH_TIMEOUT = 60000; // 60 seconds
+    const timeInQueue = Date.now() - queueEntry.joinedAt;
+
+    if (timeInQueue >= EXPAND_SEARCH_TIMEOUT && !queueEntry.expandedSearchAt) {
+      return true;
+    }
+    return false;
+  }
+
+  // Helper function to try matching agents
+  async function tryAgentMatch(joiningSocket, joiningUserId) {
+    const queue = global.agentMatchmakingQueue;
+    if (queue.size < 2) return;
+
+    // Find two players to match
+    const entries = Array.from(queue.entries());
+    const joiningPlayer = queue.get(joiningUserId);
+
+    // Check if joining player is already being matched or locked
+    if (!joiningPlayer || joiningPlayer.isMatching || global.agentMatchmakingLocks.has(joiningUserId)) {
+      return;
+    }
+
+    // Verify joining player's socket is still connected (High #6 fix)
+    const joiningPlayerSocket = io.sockets.sockets.get(joiningPlayer.socketId);
+    if (!joiningPlayerSocket || !joiningPlayerSocket.connected) {
+      // Player disconnected, remove from queue
+      // Bug 4 follow-up: refund their reservation since the battle never happens.
+      if (joiningPlayer.reservationId) {
+        releaseReservation(joiningPlayer.reservationId).catch(refundErr => {
+          logger.warn(`[Agent Queue] releaseReservation failed for disconnected user=${joiningUserId}: ${refundErr.message}`);
+        });
+      }
+      queue.delete(joiningUserId);
+      if (global.agentMatchmakingLocks) {
+        global.agentMatchmakingLocks.delete(joiningUserId);
+      }
+      logger.debug(`[Agent Queue] Removed disconnected player ${joiningUserId} from queue`);
+      return;
+    }
+
+    // Check if player should expand search (after timeout)
+    const expandSearch = shouldExpandSearch(joiningPlayer);
+    if (expandSearch && !joiningPlayer.expandedSearchAt) {
+      joiningPlayer.expandedSearchAt = Date.now();
+      logger.info(`[Agent Queue] Expanding search for user ${joiningUserId} after timeout`);
+
+      // Notify player that search is expanding
+      const joiningSocketObj = io.sockets.sockets.get(joiningPlayer.socketId);
+      if (joiningSocketObj) {
+        joiningSocketObj.emit('agent-search-expanded', {
+          message: 'Search expanded - now matching with any available player'
+        });
+      }
+    }
+
+    // Find an opponent with preference matching
+    let bestMatch = null;
+    let bestMatchQuality = 0;
+
+    for (const [opponentId, opponent] of entries) {
+      if (opponentId === joiningUserId) continue;
+
+      // Skip if opponent is already being matched or locked
+      if (opponent.isMatching || global.agentMatchmakingLocks.has(opponentId)) continue;
+
+      // Verify opponent's socket is still connected (High #6 fix)
+      const opponentPlayerSocket = io.sockets.sockets.get(opponent.socketId);
+      if (!opponentPlayerSocket || !opponentPlayerSocket.connected) {
+        // Opponent disconnected, remove from queue and continue searching
+        // Bug 4 follow-up: refund their reservation since the battle never happens.
+        if (opponent.reservationId) {
+          releaseReservation(opponent.reservationId).catch(refundErr => {
+            logger.warn(`[Agent Queue] releaseReservation failed for disconnected opponent=${opponentId}: ${refundErr.message}`);
+          });
+        }
+        queue.delete(opponentId);
+        if (global.agentMatchmakingLocks) {
+          global.agentMatchmakingLocks.delete(opponentId);
+        }
+        logger.debug(`[Agent Queue] Removed disconnected opponent ${opponentId} from queue`);
+        continue;
+      }
+
+      // Check if opponent should also expand search
+      const opponentExpandSearch = shouldExpandSearch(opponent);
+      if (opponentExpandSearch && !opponent.expandedSearchAt) {
+        opponent.expandedSearchAt = Date.now();
+        logger.info(`[Agent Queue] Expanding search for user ${opponentId} after timeout`);
+
+        const opponentSocket = io.sockets.sockets.get(opponent.socketId);
+        if (opponentSocket) {
+          opponentSocket.emit('agent-search-expanded', {
+            message: 'Search expanded - now matching with any available player'
+          });
+        }
+      }
+
+      // If either player has expanded search, match them
+      if (expandSearch || opponentExpandSearch) {
+        bestMatch = opponent;
+        bestMatchQuality = 100; // Perfect match due to timeout
+        break;
+      }
+
+      // Check preference match
+      const preferenceMatch = checkPreferenceMatch(joiningPlayer, opponent);
+      if (preferenceMatch.matches) {
+        // Calculate match quality (0-100)
+        let matchQuality = 100;
+
+        // Reduce quality slightly based on ELO difference (for similar preference)
+        if (joiningPlayer.preferences.eloRange === 'similar' || opponent.preferences.eloRange === 'similar') {
+          const eloDiff = Math.abs(joiningPlayer.elo - opponent.elo);
+          matchQuality -= Math.min(eloDiff / 4, 50); // Max penalty of 50
+        }
+
+        // Take the first valid match (FIFO within preference constraints)
+        if (!bestMatch || matchQuality > bestMatchQuality) {
+          bestMatch = opponent;
+          bestMatchQuality = matchQuality;
+        }
+
+        // If we found a perfect match, stop searching
+        if (matchQuality >= 100) {
+          break;
+        }
+      }
+    }
+
+    // If no match found, return early
+    if (!bestMatch) {
+      return;
+    }
+
+    const opponent = bestMatch;
+    const opponentId = opponent.userId;
+
+      // Match found! Set locks and flags to prevent double-matching
+      global.agentMatchmakingLocks.add(joiningUserId);
+      global.agentMatchmakingLocks.add(opponentId);
+      // Track lock timestamps for orphan cleanup
+      if (global.agentLockTimestamps) {
+        global.agentLockTimestamps.set(joiningUserId, Date.now());
+        global.agentLockTimestamps.set(opponentId, Date.now());
+      }
+      joiningPlayer.isMatching = true;
+      opponent.isMatching = true;
+
+      // Remove both from queue IMMEDIATELY (atomic with lock)
+      queue.delete(joiningUserId);
+      queue.delete(opponentId);
+
+      try {
+        const battleId = `agent-battle-${uuidv4()}`;
+
+        // Determine problem difficulty based on preferences
+        let difficulty = 'medium'; // Default
+        const p1Difficulty = joiningPlayer.preferences.difficulty;
+        const p2Difficulty = opponent.preferences.difficulty;
+
+        // If both players have same difficulty preference (not 'any'), use it
+        if (p1Difficulty === p2Difficulty && p1Difficulty !== 'any') {
+          difficulty = p1Difficulty;
+        } else if (p1Difficulty !== 'any' && p2Difficulty === 'any') {
+          difficulty = p1Difficulty;
+        } else if (p2Difficulty !== 'any' && p1Difficulty === 'any') {
+          difficulty = p2Difficulty;
+        }
+        // Otherwise, use default 'medium'
+
+        // Get or generate a problem (Low #13 fix - robust fallback chain)
+        const generateAdversarialProblem = async (d) => { const pool = problemsLoader.getAgentProblems(['easy', 'medium', 'hard'].includes(d) ? d : null); return pool.length ? { success: true, problem: pool[Math.floor(Math.random() * pool.length)] } : { success: false }; }; // open edition: no problem generator
+        let problem;
+
+        try {
+          // Try to generate a fresh adversarial problem
+          const result = await generateAdversarialProblem(difficulty);
+          if (result.success) {
+            problem = result.problem;
+          } else {
+            // Fallback to random problem
+            problem = getRandomProblem(null, 1200);
+          }
+        } catch (err) {
+          logger.warn('[Agent Battle] Problem generation failed, using fallback:', err.message);
+          try {
+            problem = getRandomProblem(null, 1200);
+          } catch (fallbackErr) {
+            // Emergency fallback - hardcoded Two Sum problem
+            logger.error('[Agent Battle] Fallback problem also failed, using emergency problem:', fallbackErr.message);
+            problem = {
+              id: 'emergency-two-sum',
+              title: 'Two Sum',
+              description: 'Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target. You may assume that each input would have exactly one solution, and you may not use the same element twice.',
+              examples: [
+                { input: { nums: [2, 7, 11, 15], target: 9 }, output: [0, 1] },
+                { input: { nums: [3, 2, 4], target: 6 }, output: [1, 2] }
+              ],
+              constraints: ['2 <= nums.length <= 10^4', '-10^9 <= nums[i] <= 10^9', '-10^9 <= target <= 10^9'],
+              testCases: [
+                { input: { nums: [2, 7, 11, 15], target: 9 }, expected: [0, 1] },
+                { input: { nums: [3, 2, 4], target: 6 }, expected: [1, 2] },
+                { input: { nums: [3, 3], target: 6 }, expected: [0, 1] }
+              ],
+              difficulty: 'easy'
+            };
+          }
+        }
+
+      // Create battle record
+      const agentBattle = {
+        id: battleId,
+        problem,
+        players: [
+          {
+            loadoutId: joiningPlayer.loadoutId,
+            versionId: joiningPlayer.versionId,
+            userId: joiningUserId,
+            username: joiningPlayer.username,
+            loadout: joiningPlayer.loadout,
+            socketId: joiningPlayer.socketId,
+            status: 'pending',
+            code: null,
+            testResults: null
+          },
+          {
+            loadoutId: opponent.loadoutId,
+            versionId: opponent.versionId,
+            userId: opponentId,
+            username: opponent.username,
+            loadout: opponent.loadout,
+            socketId: opponent.socketId,
+            status: 'pending',
+            code: null,
+            testResults: null
+          }
+        ],
+        spectators: new Set(), // Track spectators
+        state: 'matched',
+        createdAt: Date.now(),
+        startedAt: null,
+        finishedAt: null
+      };
+
+      // Store battle
+      if (!global.agentBattles) {
+        global.agentBattles = new Map();
+      }
+      global.agentBattles.set(battleId, agentBattle);
+
+      // Notify both players with match quality information
+      const joiningSocketObj = io.sockets.sockets.get(joiningPlayer.socketId);
+      const opponentSocketObj = io.sockets.sockets.get(opponent.socketId);
+
+      if (joiningSocketObj) {
+        joiningSocketObj.emit('agent-match-found', {
+          battleId,
+          opponent: {
+            username: opponent.username,
+            model: opponent.loadout.model,
+            elo: opponent.elo
+          },
+          matchQuality: bestMatchQuality,
+          problemDifficulty: difficulty
+        });
+      }
+
+      if (opponentSocketObj) {
+        opponentSocketObj.emit('agent-match-found', {
+          battleId,
+          opponent: {
+            username: joiningPlayer.username,
+            model: joiningPlayer.loadout.model,
+            elo: joiningPlayer.elo
+          },
+          matchQuality: bestMatchQuality,
+          problemDifficulty: difficulty
+        });
+      }
+
+      logger.info(`[Agent Battle] Match created: ${joiningPlayer.username} vs ${opponent.username} (${battleId})`);
+
+        // Release locks now that battle is successfully created
+        global.agentMatchmakingLocks.delete(joiningUserId);
+        global.agentMatchmakingLocks.delete(opponentId);
+
+        // Start the battle asynchronously with error handling
+        runAgentBattle(battleId).catch(err => {
+          logger.error(`[Agent Battle] Fatal error in battle ${battleId}:`, err);
+          const battle = global.agentBattles?.get(battleId);
+          if (battle) {
+            battle.state = 'error';
+            battle.error = err.message;
+            // Notify players of failure
+            for (const player of battle.players) {
+              const socketObj = io.sockets.sockets.get(player.socketId);
+              if (socketObj) {
+                socketObj.emit('agent-battle-error', { battleId, error: 'Battle execution failed' });
+              }
+            }
+
+            // Clean up battle from memory after error (with timer tracking)
+            const errorCleanupTimer = setTimeout(() => {
+              if (global.agentBattles?.has(battleId)) {
+                global.agentBattles.delete(battleId);
+                logger.debug(`[Memory] Cleaned up errored battle ${battleId}`);
+              }
+              global.agentCleanupTimers?.delete(battleId);
+            }, 5 * 60 * 1000); // 5 minutes
+            global.agentCleanupTimers?.set(battleId, errorCleanupTimer);
+          }
+        });
+
+        return; // Match found, exit
+      } catch (err) {
+        // If match creation fails, release locks, reset flags and put players back in queue
+        logger.error('[Agent Battle] Match creation failed:', err);
+        global.agentMatchmakingLocks.delete(joiningUserId);
+        global.agentMatchmakingLocks.delete(opponentId);
+        joiningPlayer.isMatching = false;
+        opponent.isMatching = false;
+        queue.set(joiningUserId, joiningPlayer);
+        queue.set(opponentId, opponent);
+
+        // Refund rate limit slots since match never happened
+        await refundRateLimitSlot(joiningUserId, joiningPlayer?.loadout?.model);
+        await refundRateLimitSlot(opponentId, opponent?.loadout?.model);
+        logger.info(`[Agent Battle] Refunded rate limit slots for users ${joiningUserId} and ${opponentId} after match failure`);
+
+        // Notify players of failure
+        const joiningSocketObj = io.sockets.sockets.get(joiningPlayer.socketId);
+        const opponentSocketObj = io.sockets.sockets.get(opponent.socketId);
+
+        if (joiningSocketObj) {
+          joiningSocketObj.emit('agent-match-error', { error: 'Failed to create match' });
+        }
+        if (opponentSocketObj) {
+          opponentSocketObj.emit('agent-match-error', { error: 'Failed to create match' });
+        }
+
+        return; // Exit after handling error
+      }
+  }
+
+  // Join agent battle room for spectating
+  socket.on('join-agent-battle-room', ({ battleId }) => {
+    try {
+      // Verify authentication
+      const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+      if (!token) {
+        socket.emit('agent-battle-error', { error: 'Not authenticated' });
+        return;
+      }
+
+      const jwtLib = require('jsonwebtoken');
+      const decoded = jwtLib.verify(token, SECRET);
+      const userId = decoded.sub;
+
+      if (!battleId) return;
+      const roomName = `agent-battle-${battleId}`;
+      socket.join(roomName);
+      logger.debug(`Socket ${socket.id} (user ${userId}) joined agent battle room ${roomName}`);
+
+      // Send current battle state if available
+      const battle = global.agentBattles?.get(battleId);
+      if (battle) {
+        const participant = battle.players.find(p => String(p.userId) === String(userId));
+        if (participant && participant.socketId !== socket.id) {
+          participant.socketId = socket.id;
+          logger.debug(`[Agent Battle] Refreshed socket for participant ${userId} in battle ${battleId}`);
+        }
+
+        // Add user to spectators (with limit)
+        if (!battle.spectators) {
+          battle.spectators = new Set();
+        }
+
+        // Check spectator limit before adding
+        if (battle.spectators.size >= MAX_SPECTATORS_PER_BATTLE && !battle.spectators.has(userId)) {
+          socket.emit('agent-battle-error', { error: 'Battle has reached maximum spectator capacity' });
+          return;
+        }
+        battle.spectators.add(userId);
+
+        // Store battleId on socket for cleanup on disconnect
+        if (!socket.agentBattleRooms) {
+          socket.agentBattleRooms = new Set();
+        }
+        socket.agentBattleRooms.add(battleId);
+
+        socket.emit('agent-battle-state', {
+          battleId,
+          state: battle.state,
+          problem: battle.problem ? {
+            id: battle.problem.id,
+            title: battle.problem.title,
+            description: battle.problem.description,
+            examples: battle.problem.examples
+          } : null,
+          players: battle.players.map(p => ({
+            loadoutId: p.loadoutId,
+            userId: p.userId,
+            username: p.username,
+            model: p.loadout.model,
+            status: p.status,
+            passedCount: p.passedCount || 0,
+            totalTests: p.totalTests || 0,
+            executionTime: p.executionTime
+          })),
+          spectatorCount: battle.spectators.size
+        });
+
+        // Emit spectator count update to all in the room
+        io.to(roomName).emit('spectator-count-update', {
+          battleId,
+          spectatorCount: battle.spectators.size
+        });
+      }
+    } catch (err) {
+      logger.error('Error in join-agent-battle-room:', err);
+      socket.emit('agent-battle-error', { error: 'Authentication failed' });
+    }
+  });
+
+  // Leave agent battle room
+  socket.on('leave-agent-battle-room', ({ battleId }) => {
+    try {
+      if (!battleId) return;
+      const roomName = `agent-battle-${battleId}`;
+      socket.leave(roomName);
+
+      // Get userId from socket auth
+      const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+      if (token) {
+        const jwtLib = require('jsonwebtoken');
+        const decoded = jwtLib.verify(token, SECRET);
+        const userId = decoded.sub;
+
+        // Remove from spectators
+        const battle = global.agentBattles?.get(battleId);
+        if (battle && battle.spectators) {
+          battle.spectators.delete(userId);
+
+          // Emit updated spectator count
+          io.to(roomName).emit('spectator-count-update', {
+            battleId,
+            spectatorCount: battle.spectators.size
+          });
+        }
+      }
+
+      // Remove from socket's tracked rooms
+      if (socket.agentBattleRooms) {
+        socket.agentBattleRooms.delete(battleId);
+      }
+
+      logger.debug(`Socket ${socket.id} left agent battle room ${roomName}`);
+    } catch (err) {
+      logger.error('Error in leave-agent-battle-room:', err);
+    }
+  });
+
+  // =====================================================
+  // AGENT BATTLE REMATCH SYSTEM
+  // =====================================================
+
+  // Initialize rematch tracking map
+  if (!global.agentRematchRequests) {
+    global.agentRematchRequests = new Map();
+  }
+
+  // Request an agent battle rematch
+  socket.on('request-agent-rematch', async ({ battleId }) => {
+    try {
+      const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+      if (!token) {
+        socket.emit('agent-rematch-error', { error: 'Not authenticated' });
+        return;
+      }
+
+      const jwtLib = require('jsonwebtoken');
+      const decoded = jwtLib.verify(token, SECRET);
+      const userId = decoded.sub;
+
+      // Verify the battle exists (battles are cleaned up after 5 minutes)
+      const battle = global.agentBattles?.get(battleId);
+      if (!battle) {
+        socket.emit('agent-rematch-error', {
+          error: 'Battle not found. Rematches are only available within 5 minutes after a battle ends.',
+          expired: true
+        });
+        return;
+      }
+
+      // Verify user was a participant
+      const player = battle.players.find(p => p.userId === userId);
+      if (!player) {
+        socket.emit('agent-rematch-error', { error: 'You were not a participant in this battle' });
+        return;
+      }
+
+      // Find opponent
+      const opponent = battle.players.find(p => p.userId !== userId);
+      if (!opponent) {
+        socket.emit('agent-rematch-error', { error: 'Opponent not found' });
+        return;
+      }
+
+      // Create or update rematch request
+      let rematchData = global.agentRematchRequests.get(battleId);
+      if (!rematchData) {
+        rematchData = {
+          battleId,
+          players: battle.players.map(p => ({
+            userId: p.userId,
+            username: p.username,
+            loadout: p.loadout,
+            loadoutId: p.loadoutId,
+            socketId: p.socketId
+          })),
+          requests: new Set(),
+          createdAt: Date.now()
+        };
+        global.agentRematchRequests.set(battleId, rematchData);
+
+        // Auto-cleanup after 60 seconds
+        setTimeout(() => {
+          if (global.agentRematchRequests?.has(battleId)) {
+            global.agentRematchRequests.delete(battleId);
+            logger.debug(`[Agent Rematch] Cleaned up expired rematch request for battle ${battleId}`);
+          }
+        }, 60 * 1000);
+      }
+
+      // Add this player's request
+      rematchData.requests.add(userId);
+
+      logger.info(`[Agent Rematch] ${player.username} requested rematch for battle ${battleId}`);
+
+      // Notify opponent
+      const opponentSocket = io.sockets.sockets.get(opponent.socketId);
+      if (opponentSocket) {
+        opponentSocket.emit('agent-rematch-requested', {
+          battleId,
+          requester: {
+            userId: player.userId,
+            username: player.username
+          },
+          expiresIn: 60000 // 60 seconds
+        });
+      }
+
+      // If both players have requested, create new battle
+      if (rematchData.requests.size === 2) {
+        // Check if rematch is already being created (race condition prevention)
+        if (global.agentRematchLocks.has(battleId)) {
+          logger.debug(`[Agent Rematch] Rematch already being created for battle ${battleId}, ignoring duplicate`);
+          return;
+        }
+
+        // Lock the rematch to prevent duplicate creation
+        global.agentRematchLocks.add(battleId);
+
+        try {
+          logger.info(`[Agent Rematch] Both players accepted rematch for battle ${battleId}`);
+
+          // Create new battle with same loadouts
+          const newBattleId = `agent-battle-${uuidv4()}`;
+          const allProblems = problemsLoader.getAgentProblems(); // open edition problem set
+          const problem = allProblems[Math.floor(Math.random() * allProblems.length)];
+
+          if (!global.agentBattles) {
+            global.agentBattles = new Map();
+          }
+
+          const newBattle = {
+            id: newBattleId,
+            players: rematchData.players.map(p => ({
+              ...p,
+              status: 'pending',
+              passedCount: 0,
+              totalTests: 0,
+              eloChange: 0,
+              isWinner: false
+            })),
+            problem,
+            state: 'matched',
+            createdAt: Date.now(),
+            spectators: new Set()
+          };
+
+          global.agentBattles.set(newBattleId, newBattle);
+
+          // Notify both players
+          for (const player of rematchData.players) {
+            const playerSocket = io.sockets.sockets.get(player.socketId);
+            if (playerSocket) {
+              playerSocket.emit('agent-rematch-starting', {
+                battleId: newBattleId,
+                message: 'Rematch starting!'
+              });
+            }
+          }
+
+          // Start the new battle. Always attach .catch so a rejection here
+          // (e.g. agentSolver/Anthropic SDK throws) doesn't become an
+          // unhandled rejection that kills the process under
+          // --unhandled-rejections=strict.
+          setTimeout(() => {
+            runAgentBattle(newBattleId).catch(err => {
+              logger.error(`[Agent Rematch] runAgentBattle ${newBattleId} failed:`, err);
+            });
+          }, 2000); // 2 second delay for UI transition
+        } finally {
+          // Clean up rematch request and lock
+          global.agentRematchRequests.delete(battleId);
+          global.agentRematchLocks.delete(battleId);
+        }
+      } else {
+        // Confirm to requester that they're waiting
+        socket.emit('agent-rematch-waiting', {
+          battleId,
+          message: 'Waiting for opponent to accept...'
+        });
+      }
+    } catch (err) {
+      logger.error('Error in request-agent-rematch:', err);
+      socket.emit('agent-rematch-error', { error: 'Failed to request rematch' });
+    }
+  });
+
+  // Accept an agent battle rematch (same logic as request - both players must "accept")
+  socket.on('accept-agent-rematch', async ({ battleId }) => {
+    try {
+      const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+      if (!token) {
+        socket.emit('agent-rematch-error', { error: 'Not authenticated' });
+        return;
+      }
+
+      const jwtLib = require('jsonwebtoken');
+      const decoded = jwtLib.verify(token, SECRET);
+      const userId = decoded.sub;
+
+      // Verify the battle exists (battles are cleaned up after 5 minutes)
+      const battle = global.agentBattles?.get(battleId);
+      if (!battle) {
+        socket.emit('agent-rematch-error', {
+          error: 'Battle not found. Rematches are only available within 5 minutes after a battle ends.',
+          expired: true
+        });
+        return;
+      }
+
+      // Verify user was a participant
+      const player = battle.players.find(p => p.userId === userId);
+      if (!player) {
+        socket.emit('agent-rematch-error', { error: 'You were not a participant in this battle' });
+        return;
+      }
+
+      // Find opponent
+      const opponent = battle.players.find(p => p.userId !== userId);
+      if (!opponent) {
+        socket.emit('agent-rematch-error', { error: 'Opponent not found' });
+        return;
+      }
+
+      // Get or create rematch data
+      let rematchData = global.agentRematchRequests.get(battleId);
+      if (!rematchData) {
+        // No existing request - this "accept" acts as the first request
+        rematchData = {
+          battleId,
+          players: battle.players.map(p => ({
+            userId: p.userId,
+            username: p.username,
+            loadout: p.loadout,
+            loadoutId: p.loadoutId,
+            socketId: p.socketId
+          })),
+          requests: new Set(),
+          createdAt: Date.now()
+        };
+        global.agentRematchRequests.set(battleId, rematchData);
+
+        // Auto-cleanup after 60 seconds
+        setTimeout(() => {
+          if (global.agentRematchRequests?.has(battleId)) {
+            global.agentRematchRequests.delete(battleId);
+          }
+        }, 60 * 1000);
+      }
+
+      // Add this player's acceptance
+      rematchData.requests.add(userId);
+
+      logger.info(`[Agent Rematch] ${player.username} accepted rematch for battle ${battleId}`);
+
+      // If both players have requested/accepted, create new battle
+      if (rematchData.requests.size === 2) {
+        // Check if rematch is already being created
+        if (global.agentRematchLocks.has(battleId)) {
+          return;
+        }
+
+        global.agentRematchLocks.add(battleId);
+
+        try {
+          logger.info(`[Agent Rematch] Both players ready for rematch ${battleId}`);
+
+          const newBattleId = `agent-battle-${uuidv4()}`;
+          const allProblems = problemsLoader.getAgentProblems(); // open edition problem set
+          const problem = allProblems[Math.floor(Math.random() * allProblems.length)];
+
+          if (!global.agentBattles) {
+            global.agentBattles = new Map();
+          }
+
+          const newBattle = {
+            id: newBattleId,
+            players: rematchData.players.map(p => ({
+              ...p,
+              status: 'pending',
+              passedCount: 0,
+              totalTests: 0,
+              eloChange: 0,
+              isWinner: false
+            })),
+            problem,
+            state: 'matched',
+            createdAt: Date.now(),
+            spectators: new Set()
+          };
+
+          global.agentBattles.set(newBattleId, newBattle);
+
+          // Notify both players
+          for (const p of rematchData.players) {
+            const pSocket = io.sockets.sockets.get(p.socketId);
+            if (pSocket) {
+              pSocket.emit('agent-rematch-starting', {
+                battleId: newBattleId,
+                message: 'Rematch starting!'
+              });
+            }
+          }
+
+          // Start the new battle (see comment above on the other rematch path).
+          setTimeout(() => {
+            runAgentBattle(newBattleId).catch(err => {
+              logger.error(`[Agent Rematch] runAgentBattle ${newBattleId} failed:`, err);
+            });
+          }, 2000);
+        } finally {
+          global.agentRematchRequests.delete(battleId);
+          global.agentRematchLocks.delete(battleId);
+        }
+      } else {
+        // Notify opponent that we accepted
+        const opponentSocket = io.sockets.sockets.get(opponent.socketId);
+        if (opponentSocket) {
+          opponentSocket.emit('agent-rematch-accepted', {
+            battleId,
+            accepter: {
+              userId: player.userId,
+              username: player.username
+            }
+          });
+        }
+        socket.emit('agent-rematch-waiting', {
+          battleId,
+          message: 'Waiting for opponent...'
+        });
+      }
+    } catch (err) {
+      logger.error('Error in accept-agent-rematch:', err);
+      socket.emit('agent-rematch-error', { error: 'Failed to accept rematch' });
+    }
+  });
+
+  // Decline an agent battle rematch
+  socket.on('decline-agent-rematch', async ({ battleId }) => {
+    try {
+      const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+      if (!token) {
+        socket.emit('agent-rematch-error', { error: 'Not authenticated' });
+        return;
+      }
+
+      const jwtLib = require('jsonwebtoken');
+      const decoded = jwtLib.verify(token, SECRET);
+      const userId = decoded.sub;
+
+      // Get rematch data
+      const rematchData = global.agentRematchRequests.get(battleId);
+      if (!rematchData) {
+        return; // Already expired or doesn't exist
+      }
+
+      // Find opponent who requested
+      const battle = global.agentBattles?.get(battleId);
+      if (!battle) return;
+
+      const decliner = battle.players.find(p => p.userId === userId);
+      const opponent = battle.players.find(p => p.userId !== userId);
+
+      if (opponent && decliner) {
+        // Notify opponent that rematch was declined
+        const opponentSocket = io.sockets.sockets.get(opponent.socketId);
+        if (opponentSocket) {
+          opponentSocket.emit('agent-rematch-declined', {
+            battleId,
+            decliner: {
+              userId: decliner.userId,
+              username: decliner.username
+            }
+          });
+        }
+
+        logger.info(`[Agent Rematch] ${decliner.username} declined rematch for battle ${battleId}`);
+      }
+
+      // Clean up rematch request
+      global.agentRematchRequests.delete(battleId);
+    } catch (err) {
+      logger.error('Error in decline-agent-rematch:', err);
+    }
+  });
+
+  // Cancel rematch request
+  socket.on('cancel-agent-rematch', async ({ battleId }) => {
+    try {
+      const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+      if (!token) return;
+
+      const jwtLib = require('jsonwebtoken');
+      const decoded = jwtLib.verify(token, SECRET);
+      const userId = decoded.sub;
+
+      const rematchData = global.agentRematchRequests.get(battleId);
+      if (!rematchData) return;
+
+      // Remove user's request
+      rematchData.requests.delete(userId);
+
+      // If no requests left, clean up
+      if (rematchData.requests.size === 0) {
+        global.agentRematchRequests.delete(battleId);
+      }
+
+      // Notify opponent if they exist
+      const battle = global.agentBattles?.get(battleId);
+      if (battle) {
+        const canceller = battle.players.find(p => p.userId === userId);
+        const opponent = battle.players.find(p => p.userId !== userId);
+
+        if (opponent && canceller) {
+          const opponentSocket = io.sockets.sockets.get(opponent.socketId);
+          if (opponentSocket) {
+            opponentSocket.emit('agent-rematch-cancelled', {
+              battleId,
+              canceller: {
+                userId: canceller.userId,
+                username: canceller.username
+              }
+            });
+          }
+        }
+      }
+
+      logger.debug(`[Agent Rematch] User ${userId} cancelled rematch request for battle ${battleId}`);
+    } catch (err) {
+      logger.error('Error in cancel-agent-rematch:', err);
+    }
+  });
+
+  // Helper function to record battle event for replay
+  async function recordBattleEvent(battleId, eventType, playerId, eventData, battleStartTime) {
+    try {
+      const timestampMs = Date.now() - battleStartTime;
+      await dbHelper.run(
+        `INSERT INTO agent_battle_events (battle_id, event_type, player_id, event_data, timestamp_ms)
+         VALUES (?, ?, ?, ?, ?)`,
+        [battleId, eventType, playerId, JSON.stringify(eventData), timestampMs]
+      );
+    } catch (err) {
+      logger.error(`[Agent Battle Replay] Failed to record event: ${err.message}`);
+    }
+  }
+
+  // Run the agent battle
+  async function runAgentBattle(battleId) {
+    const battle = global.agentBattles?.get(battleId);
+    if (!battle) return;
+
+    const { generateSolutionStreaming } = require('./services/agentSolver');
+    const { validateSolution } = require('./services/validateSolution');
+
+    battle.state = 'running';
+    battle.startedAt = Date.now();
+
+    logger.info(`[Agent Battle] Starting battle ${battleId}`);
+
+    // Record battle start event
+    await recordBattleEvent(battleId, 'battle_start', 0, {
+      problem: {
+        id: battle.problem.id,
+        title: battle.problem.title,
+        description: battle.problem.description,
+        examples: battle.problem.examples
+      }
+    }, battle.startedAt);
+
+    // Notify spectators
+    io.to(`agent-battle-${battleId}`).emit('agent-battle-started', {
+      battleId,
+      problem: {
+        id: battle.problem.id,
+        title: battle.problem.title,
+        description: battle.problem.description,
+        examples: battle.problem.examples
+      }
+    });
+
+    // Broadcast to all users that a new live battle has started
+    io.emit('live-battles-update', {
+      type: 'battle-started',
+      battleId,
+      timestamp: Date.now()
+    });
+
+    // Run both agents in parallel
+    const results = await Promise.all(
+      battle.players.map(async (player, index) => {
+        try {
+          const startTime = Date.now();
+
+          // Track accumulated code for validation
+          let accumulatedCode = '';
+
+          // Emit agent-coding-started event
+          io.to(`agent-battle-${battleId}`).emit('agent-coding-started', {
+            battleId,
+            playerId: player.userId,
+            timestamp: Date.now()
+          });
+
+          // Record coding started event
+          await recordBattleEvent(battleId, 'coding_started', player.userId, {
+            loadout: {
+              model: player.loadout.model,
+              language: player.loadout.language
+            }
+          }, battle.startedAt);
+
+          // Generate solution with streaming
+          const result = await generateSolutionStreaming(
+            battle.problem,
+            player.loadout,
+            (chunk) => {
+              // Accumulate code
+              accumulatedCode += chunk;
+
+              // Record code chunk event
+              recordBattleEvent(battleId, 'code_chunk', player.userId, { chunk }, battle.startedAt).catch(err => {
+                logger.error(`[Agent Battle Replay] Failed to record code chunk: ${err.message}`);
+              });
+
+              // Emit code chunk to battle room
+              io.to(`agent-battle-${battleId}`).emit('agent-code-chunk', {
+                battleId,
+                playerId: player.userId,
+                chunk: chunk,
+                timestamp: Date.now()
+              });
+            },
+            // onToolUse callback
+            (toolName, input, output) => {
+              // Record tool use event
+              recordBattleEvent(battleId, 'tool_use', player.userId, {
+                tool: toolName,
+                input: input,
+                output: output
+              }, battle.startedAt).catch(err => {
+                logger.error(`[Agent Battle Replay] Failed to record tool use: ${err.message}`);
+              });
+
+              // Emit tool usage event
+              io.to(`agent-battle-${battleId}`).emit('agent-tool-use', {
+                battleId,
+                playerId: player.userId,
+                tool: toolName,
+                input: input,
+                output: output,
+                timestamp: Date.now()
+              });
+            }
+          );
+
+          // Emit agent-coding-finished event
+          io.to(`agent-battle-${battleId}`).emit('agent-coding-finished', {
+            battleId,
+            playerId: player.userId,
+            timestamp: Date.now()
+          });
+
+          // Record submission event
+          await recordBattleEvent(battleId, 'submission', player.userId, {
+            code: result.code || '',
+            success: result.success,
+            error: result.error
+          }, battle.startedAt);
+
+          const endTime = Date.now();
+
+          // Validate the generated code
+          let testResults = [];
+          let passedCount = 0;
+          let totalTests = 0;
+
+          if (result.success && result.code) {
+            testResults = await validateSolution(
+              result.code,
+              battle.problem.testCases,
+              player.loadout.language,
+              battle.problem.id
+            );
+            passedCount = testResults.filter(r => r.passed).length;
+            totalTests = testResults.length;
+          } else {
+            // No code generated, create failed test results
+            testResults = battle.problem.testCases.map(tc => ({
+              input: tc.input,
+              expected: tc.output,
+              actual: 'No code generated',
+              passed: false,
+              error: result.error || 'Code generation failed'
+            }));
+            totalTests = testResults.length;
+          }
+
+          // Update player status
+          player.status = result.success && passedCount === totalTests ? 'completed' : 'failed';
+          player.code = result.code;
+          player.testResults = testResults;
+          player.executionTime = endTime - startTime;
+          player.passedCount = passedCount;
+          player.totalTests = totalTests;
+
+          // Store token usage and generation metrics
+          player.tokensUsed = result.tokensUsed?.total || 0;
+          player.generationTimeMs = result.generationTimeMs || 0;
+          player.toolCalls = result.toolCalls?.length || 0;
+
+          // Record result event
+          await recordBattleEvent(battleId, 'result', player.userId, {
+            status: player.status,
+            passedCount,
+            totalTests,
+            executionTime: player.executionTime,
+            tokensUsed: player.tokensUsed,
+            generationTimeMs: player.generationTimeMs,
+            toolCalls: player.toolCalls
+          }, battle.startedAt);
+
+          // Emit progress
+          const socketObj = io.sockets.sockets.get(player.socketId);
+          if (socketObj) {
+            socketObj.emit('agent-battle-progress', {
+              battleId,
+              playerId: player.userId,
+              status: player.status,
+              passedCount: player.passedCount,
+              totalTests: player.totalTests
+            });
+          }
+
+          return {
+            playerId: player.userId,
+            success: passedCount === totalTests,
+            passedCount: player.passedCount,
+            executionTime: player.executionTime,
+            tokensUsed: player.tokensUsed,
+            generationTimeMs: player.generationTimeMs,
+            toolCalls: player.toolCalls
+          };
+        } catch (err) {
+          logger.error(`[Agent Battle] Error running agent for ${player.username}:`, err);
+          player.status = 'error';
+
+          // Emit agent-coding-finished even on error
+          io.to(`agent-battle-${battleId}`).emit('agent-coding-finished', {
+            battleId,
+            coderId: player.userId,
+            timestamp: Date.now(),
+            error: err.message
+          });
+
+          return {
+            playerId: player.userId,
+            success: false,
+            passedCount: 0,
+            error: err.message
+          };
+        }
+      })
+    );
+
+    // Determine winner
+    battle.state = 'finished';
+    battle.finishedAt = Date.now();
+
+    const [p1Result, p2Result] = results;
+    const p1 = battle.players[0];
+    const p2 = battle.players[1];
+
+    let winnerId = null;
+    let reason = '';
+
+    if (p1.passedCount > p2.passedCount) {
+      winnerId = p1.userId;
+      reason = 'more_tests_passed';
+    } else if (p2.passedCount > p1.passedCount) {
+      winnerId = p2.userId;
+      reason = 'more_tests_passed';
+    } else if (p1.passedCount === p2.passedCount && p1.passedCount > 0) {
+      // Tie on tests - faster wins
+      if (p1.executionTime < p2.executionTime) {
+        winnerId = p1.userId;
+        reason = 'faster_execution';
+      } else {
+        winnerId = p2.userId;
+        reason = 'faster_execution';
+      }
+    } else {
+      reason = 'tie';
+    }
+
+    battle.winnerId = winnerId;
+    battle.winReason = reason;
+
+    // Calculate ELO changes
+    const elo = require('./elo');
+    let eloChanges = { p1Change: 0, p2Change: 0 };
+    let streakInfo = { p1: {}, p2: {} };
+
+    try {
+      // Get current agent ELO and streak info from loadouts (default 1000)
+      const p1EloRow = await dbHelper.get(
+        'SELECT elo, current_streak, best_streak FROM agent_loadouts WHERE id = ?',
+        [p1.loadoutId]
+      );
+      const p2EloRow = await dbHelper.get(
+        'SELECT elo, current_streak, best_streak FROM agent_loadouts WHERE id = ?',
+        [p2.loadoutId]
+      );
+
+      const p1Elo = p1EloRow?.elo || 1000;
+      const p2Elo = p2EloRow?.elo || 1000;
+      const p1CurrentStreak = p1EloRow?.current_streak || 0;
+      const p2CurrentStreak = p2EloRow?.current_streak || 0;
+      const p1BestStreak = p1EloRow?.best_streak || 0;
+      const p2BestStreak = p2EloRow?.best_streak || 0;
+
+      // Update default with actual ELO values so draws/errors have valid fallbacks
+      eloChanges = { p1Change: 0, p2Change: 0, p1NewElo: p1Elo, p2NewElo: p2Elo, p1StreakBonus: 0, p2StreakBonus: 0 };
+
+      // Get total agent battles for K-factor (based on loadout)
+      const p1GamesRow = await dbHelper.get(
+        'SELECT COUNT(*) as count FROM agent_battles WHERE loadout1_id = ? OR loadout2_id = ?',
+        [p1.loadoutId, p1.loadoutId]
+      );
+      const p2GamesRow = await dbHelper.get(
+        'SELECT COUNT(*) as count FROM agent_battles WHERE loadout1_id = ? OR loadout2_id = ?',
+        [p2.loadoutId, p2.loadoutId]
+      );
+
+      const p1Games = p1GamesRow?.count || 0;
+      const p2Games = p2GamesRow?.count || 0;
+
+      if (winnerId && reason !== 'tie') {
+        // Someone won
+        const isP1Winner = p1.userId === winnerId;
+        const winner = isP1Winner ? { rating: p1Elo, totalGames: p1Games } : { rating: p2Elo, totalGames: p2Games };
+        const loser = isP1Winner ? { rating: p2Elo, totalGames: p2Games } : { rating: p1Elo, totalGames: p1Games };
+
+        const eloResult = elo.calculateMatchRatings(winner, loser);
+
+        // Calculate new streak for winner
+        const winnerCurrentStreak = isP1Winner ? p1CurrentStreak : p2CurrentStreak;
+        const loserCurrentStreak = isP1Winner ? p2CurrentStreak : p1CurrentStreak;
+        const winnerBestStreak = isP1Winner ? p1BestStreak : p2BestStreak;
+        const loserBestStreak = isP1Winner ? p2BestStreak : p1BestStreak;
+
+        const newWinnerStreak = winnerCurrentStreak + 1;
+        const newWinnerBestStreak = Math.max(newWinnerStreak, winnerBestStreak);
+        const newLoserStreak = 0; // Loser streak resets
+
+        // Calculate streak bonus ELO
+        let streakBonus = 0;
+        if (newWinnerStreak >= 10) {
+          streakBonus = 20; // Legendary!
+        } else if (newWinnerStreak >= 5) {
+          streakBonus = 10;
+        } else if (newWinnerStreak >= 3) {
+          streakBonus = 5;
+        }
+
+        // Base ELO changes
+        let baseWinnerChange = eloResult.winner.change;
+        let baseLoserChange = eloResult.loser.change;
+
+        // Apply streak bonus to winner
+        const winnerChangeWithBonus = baseWinnerChange + streakBonus;
+
+        eloChanges = {
+          p1Change: isP1Winner ? winnerChangeWithBonus : baseLoserChange,
+          p2Change: isP1Winner ? baseLoserChange : winnerChangeWithBonus,
+          p1NewElo: isP1Winner ? (eloResult.winner.newRating + streakBonus) : eloResult.loser.newRating,
+          p2NewElo: isP1Winner ? eloResult.loser.newRating : (eloResult.winner.newRating + streakBonus),
+          p1StreakBonus: isP1Winner ? streakBonus : 0,
+          p2StreakBonus: isP1Winner ? 0 : streakBonus
+        };
+
+        // Store streak info for battle result
+        streakInfo = {
+          p1: {
+            currentStreak: isP1Winner ? newWinnerStreak : newLoserStreak,
+            bestStreak: isP1Winner ? newWinnerBestStreak : loserBestStreak,
+            streakBonus: isP1Winner ? streakBonus : 0
+          },
+          p2: {
+            currentStreak: isP1Winner ? newLoserStreak : newWinnerStreak,
+            bestStreak: isP1Winner ? loserBestStreak : newWinnerBestStreak,
+            streakBonus: isP1Winner ? 0 : streakBonus
+          }
+        };
+
+        // Update loadout ELO, wins/losses, streaks AND record battle in a transaction
+        // This ensures atomicity - either all updates succeed or none do
+        await db.withTransaction(async () => {
+          // Calculate tests passed for each player
+          const p1TestsPassed = (p1.testResults || []).filter(t => t.passed).length;
+          const p2TestsPassed = (p2.testResults || []).filter(t => t.passed).length;
+
+          // Get current recent_results for both loadouts
+          const p1Loadout = await dbHelper.get('SELECT recent_results FROM agent_loadouts WHERE id = ?', [p1.loadoutId]);
+          const p2Loadout = await dbHelper.get('SELECT recent_results FROM agent_loadouts WHERE id = ?', [p2.loadoutId]);
+
+          // Parse and update recent results (keep last 5)
+          let p1RecentResults = [];
+          let p2RecentResults = [];
+          try {
+            p1RecentResults = p1Loadout?.recent_results ? JSON.parse(p1Loadout.recent_results) : [];
+            p2RecentResults = p2Loadout?.recent_results ? JSON.parse(p2Loadout.recent_results) : [];
+          } catch (e) {
+            // If parse fails, start fresh
+          }
+
+          // Add new result (W for win, L for loss)
+          p1RecentResults.push(isP1Winner ? 'W' : 'L');
+          p2RecentResults.push(isP1Winner ? 'L' : 'W');
+
+          // Keep only last 5
+          p1RecentResults = p1RecentResults.slice(-5);
+          p2RecentResults = p2RecentResults.slice(-5);
+
+          if (isP1Winner) {
+            await dbHelper.run(
+              `UPDATE agent_loadouts SET
+                elo = ?,
+                wins = wins + 1,
+                current_streak = ?,
+                best_streak = ?,
+                last_battle_result = ?,
+                total_tokens_used = total_tokens_used + ?,
+                total_tests_passed = total_tests_passed + ?,
+                total_battles = total_battles + 1,
+                recent_results = ?,
+                updated_at = datetime("now")
+              WHERE id = ?`,
+              [eloChanges.p1NewElo, newWinnerStreak, newWinnerBestStreak, 'win', p1.tokensUsed || 0, p1TestsPassed, JSON.stringify(p1RecentResults), p1.loadoutId]
+            );
+            await dbHelper.run(
+              `UPDATE agent_loadouts SET
+                elo = ?,
+                losses = losses + 1,
+                current_streak = 0,
+                last_battle_result = ?,
+                total_tokens_used = total_tokens_used + ?,
+                total_tests_passed = total_tests_passed + ?,
+                total_battles = total_battles + 1,
+                recent_results = ?,
+                updated_at = datetime("now")
+              WHERE id = ?`,
+              [eloChanges.p2NewElo, 'loss', p2.tokensUsed || 0, p2TestsPassed, JSON.stringify(p2RecentResults), p2.loadoutId]
+            );
+          } else {
+            await dbHelper.run(
+              `UPDATE agent_loadouts SET
+                elo = ?,
+                losses = losses + 1,
+                current_streak = 0,
+                last_battle_result = ?,
+                total_tokens_used = total_tokens_used + ?,
+                total_tests_passed = total_tests_passed + ?,
+                total_battles = total_battles + 1,
+                recent_results = ?,
+                updated_at = datetime("now")
+              WHERE id = ?`,
+              [eloChanges.p1NewElo, 'loss', p1.tokensUsed || 0, p1TestsPassed, JSON.stringify(p1RecentResults), p1.loadoutId]
+            );
+            await dbHelper.run(
+              `UPDATE agent_loadouts SET
+                elo = ?,
+                wins = wins + 1,
+                current_streak = ?,
+                best_streak = ?,
+                last_battle_result = ?,
+                total_tokens_used = total_tokens_used + ?,
+                total_tests_passed = total_tests_passed + ?,
+                total_battles = total_battles + 1,
+                recent_results = ?,
+                updated_at = datetime("now")
+              WHERE id = ?`,
+              [eloChanges.p2NewElo, newWinnerStreak, newWinnerBestStreak, 'win', p2.tokensUsed || 0, p2TestsPassed, JSON.stringify(p2RecentResults), p2.loadoutId]
+            );
+          }
+
+          // Record battle in database (inside transaction)
+          await dbHelper.run(
+            `INSERT INTO agent_battles (id, player1_id, player2_id, loadout1_id, loadout2_id, loadout1_version_id, loadout2_version_id, problem_id, winner_id, player1_code, player2_code, player1_results, player2_results, player1_time_ms, player2_time_ms, player1_elo_change, player2_elo_change, player1_tokens_used, player2_tokens_used, player1_generation_time_ms, player2_generation_time_ms, player1_tool_calls, player2_tool_calls, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              battleId,
+              p1.userId,
+              p2.userId,
+              p1.loadoutId,
+              p2.loadoutId,
+              p1.versionId,
+              p2.versionId,
+              battle.problem.id,
+              winnerId,
+              p1.code || '',
+              p2.code || '',
+              JSON.stringify(p1.testResults || []),
+              JSON.stringify(p2.testResults || []),
+              p1.executionTime || 0,
+              p2.executionTime || 0,
+              eloChanges.p1Change,
+              eloChanges.p2Change,
+              p1.tokensUsed || 0,
+              p2.tokensUsed || 0,
+              p1.generationTimeMs || 0,
+              p2.generationTimeMs || 0,
+              p1.toolCalls || 0,
+              p2.toolCalls || 0,
+              'finished'
+            ]
+          );
+        });
+
+        logger.info(`[Agent Battle] ELO updated: ${p1.username} ${eloChanges.p1Change > 0 ? '+' : ''}${eloChanges.p1Change}, ${p2.username} ${eloChanges.p2Change > 0 ? '+' : ''}${eloChanges.p2Change}`);
+      } else {
+        // Tie
+        const tieResult = elo.calculateTieRatings(
+          { rating: p1Elo, totalGames: p1Games },
+          { rating: p2Elo, totalGames: p2Games }
+        );
+
+        eloChanges = {
+          p1Change: tieResult.player1.change,
+          p2Change: tieResult.player2.change,
+          p1NewElo: tieResult.player1.newRating,
+          p2NewElo: tieResult.player2.newRating,
+          p1StreakBonus: 0,
+          p2StreakBonus: 0
+        };
+
+        // Store streak info (streaks reset on tie)
+        streakInfo = {
+          p1: {
+            currentStreak: 0,
+            bestStreak: p1BestStreak,
+            streakBonus: 0
+          },
+          p2: {
+            currentStreak: 0,
+            bestStreak: p2BestStreak,
+            streakBonus: 0
+          }
+        };
+
+        // Update ELO for ties, reset streaks, and record battle in a transaction
+        await db.withTransaction(async () => {
+          // Calculate tests passed for each player
+          const p1TestsPassed = (p1.testResults || []).filter(t => t.passed).length;
+          const p2TestsPassed = (p2.testResults || []).filter(t => t.passed).length;
+
+          // Get current recent_results for both loadouts
+          const p1Loadout = await dbHelper.get('SELECT recent_results FROM agent_loadouts WHERE id = ?', [p1.loadoutId]);
+          const p2Loadout = await dbHelper.get('SELECT recent_results FROM agent_loadouts WHERE id = ?', [p2.loadoutId]);
+
+          // Parse and update recent results (keep last 5)
+          let p1RecentResults = [];
+          let p2RecentResults = [];
+          try {
+            p1RecentResults = p1Loadout?.recent_results ? JSON.parse(p1Loadout.recent_results) : [];
+            p2RecentResults = p2Loadout?.recent_results ? JSON.parse(p2Loadout.recent_results) : [];
+          } catch (e) {
+            // If parse fails, start fresh
+          }
+
+          // Add new result (D for draw)
+          p1RecentResults.push('D');
+          p2RecentResults.push('D');
+
+          // Keep only last 5
+          p1RecentResults = p1RecentResults.slice(-5);
+          p2RecentResults = p2RecentResults.slice(-5);
+
+          await dbHelper.run(
+            `UPDATE agent_loadouts SET
+              elo = ?,
+              current_streak = 0,
+              last_battle_result = ?,
+              total_tokens_used = total_tokens_used + ?,
+              total_tests_passed = total_tests_passed + ?,
+              total_battles = total_battles + 1,
+              recent_results = ?,
+              updated_at = datetime("now")
+            WHERE id = ?`,
+            [eloChanges.p1NewElo, 'draw', p1.tokensUsed || 0, p1TestsPassed, JSON.stringify(p1RecentResults), p1.loadoutId]
+          );
+          await dbHelper.run(
+            `UPDATE agent_loadouts SET
+              elo = ?,
+              current_streak = 0,
+              last_battle_result = ?,
+              total_tokens_used = total_tokens_used + ?,
+              total_tests_passed = total_tests_passed + ?,
+              total_battles = total_battles + 1,
+              recent_results = ?,
+              updated_at = datetime("now")
+            WHERE id = ?`,
+            [eloChanges.p2NewElo, 'draw', p2.tokensUsed || 0, p2TestsPassed, JSON.stringify(p2RecentResults), p2.loadoutId]
+          );
+
+          // Record battle in database (inside transaction)
+          await dbHelper.run(
+            `INSERT INTO agent_battles (id, player1_id, player2_id, loadout1_id, loadout2_id, loadout1_version_id, loadout2_version_id, problem_id, winner_id, player1_code, player2_code, player1_results, player2_results, player1_time_ms, player2_time_ms, player1_elo_change, player2_elo_change, player1_tokens_used, player2_tokens_used, player1_generation_time_ms, player2_generation_time_ms, player1_tool_calls, player2_tool_calls, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              battleId,
+              p1.userId,
+              p2.userId,
+              p1.loadoutId,
+              p2.loadoutId,
+              p1.versionId,
+              p2.versionId,
+              battle.problem.id,
+              winnerId,
+              p1.code || '',
+              p2.code || '',
+              JSON.stringify(p1.testResults || []),
+              JSON.stringify(p2.testResults || []),
+              p1.executionTime || 0,
+              p2.executionTime || 0,
+              eloChanges.p1Change,
+              eloChanges.p2Change,
+              p1.tokensUsed || 0,
+              p2.tokensUsed || 0,
+              p1.generationTimeMs || 0,
+              p2.generationTimeMs || 0,
+              p1.toolCalls || 0,
+              p2.toolCalls || 0,
+              'finished'
+            ]
+          );
+        });
+      }
+
+      logger.info(`[Agent Battle] Battle ${battleId} recorded in database`);
+
+      // M8 fix: spending was already committed at admission via reserveSpending.
+      // Calling recordSpending here again would double-charge the user.
+    } catch (eloErr) {
+      // Low #15 fix - detailed error logging for debugging
+      logger.error('[Agent Battle] ELO/database error:', {
+        error: eloErr.message,
+        stack: eloErr.stack,
+        battleId,
+        winnerId,
+        reason,
+        p1: { userId: p1.userId, loadoutId: p1.loadoutId, username: p1.username },
+        p2: { userId: p2.userId, loadoutId: p2.loadoutId, username: p2.username },
+        operation: eloErr.message?.includes('UPDATE') ? 'loadout_update' :
+                   eloErr.message?.includes('INSERT') ? 'battle_insert' :
+                   eloErr.message?.includes('SELECT') ? 'elo_fetch' : 'unknown'
+      });
+    }
+
+    // Notify both players of result
+    const battleResult = {
+      battleId,
+      winnerId,
+      winReason: reason,
+      eloChanges: {
+        [p1.userId]: eloChanges.p1Change,
+        [p2.userId]: eloChanges.p2Change
+      },
+      players: battle.players.map(p => ({
+        userId: p.userId,
+        username: p.username,
+        model: p.loadout.model,
+        passedCount: p.passedCount,
+        totalTests: p.totalTests,
+        executionTime: p.executionTime,
+        isWinner: p.userId === winnerId,
+        eloChange: p.userId === p1.userId ? eloChanges.p1Change : eloChanges.p2Change,
+        streakBonus: p.userId === p1.userId ? (eloChanges.p1StreakBonus || 0) : (eloChanges.p2StreakBonus || 0),
+        currentStreak: p.userId === p1.userId ? streakInfo.p1.currentStreak : streakInfo.p2.currentStreak,
+        bestStreak: p.userId === p1.userId ? streakInfo.p1.bestStreak : streakInfo.p2.bestStreak,
+        tokensUsed: p.tokensUsed || 0,
+        generationTimeMs: p.generationTimeMs || 0,
+        toolCalls: p.toolCalls || 0
+      }))
+    };
+
+    for (const player of battle.players) {
+      const socketObj = io.sockets.sockets.get(player.socketId);
+      if (socketObj) {
+        socketObj.emit('agent-battle-finished', battleResult);
+      }
+    }
+
+    // Also emit to battle room for spectators
+    io.to(`agent-battle-${battleId}`).emit('agent-battle-finished', battleResult);
+
+    // Broadcast to all users that a live battle has ended
+    io.emit('live-battles-update', {
+      type: 'battle-ended',
+      battleId,
+      winnerId,
+      timestamp: Date.now()
+    });
+
+    logger.info(`[Agent Battle] Battle ${battleId} finished. Winner: ${winnerId || 'TIE'} (${reason})`);
+
+    // Update rivalry record between the two players
+    try {
+      await db.updateAgentRivalry(p1.userId, p2.userId, winnerId);
+    } catch (rivalryErr) {
+      logger.error('[Agent Battle] Error updating rivalry:', rivalryErr);
+    }
+
+    // Check and award agent battle badges
+    for (const player of battle.players) {
+      try {
+        const isWinner = player.userId === winnerId;
+        const playerInfo = isWinner ?
+          { ...streakInfo.p1, elo: eloChanges.p1NewElo } :
+          { ...streakInfo.p2, elo: eloChanges.p2NewElo };
+        const opponentInfo = isWinner ?
+          { ...streakInfo.p2, elo: eloChanges.p2NewElo } :
+          { ...streakInfo.p1, elo: eloChanges.p1NewElo };
+
+        const earnedBadges = await db.checkAgentBattleBadges(player.userId, {
+          isWinner,
+          winnerId,
+          loadoutId: player.loadoutId,
+          currentStreak: playerInfo.currentStreak || 0,
+          executionTime: player.executionTime,
+          opponentElo: opponentInfo.elo || 1000,
+          userElo: playerInfo.elo || 1000
+        });
+
+        // Check for rivalry badges
+        const opponentId = player.userId === p1.userId ? p2.userId : p1.userId;
+        const rivalryBadges = await db.checkRivalryBadges(player.userId, opponentId);
+        earnedBadges.push(...rivalryBadges);
+
+        // Emit badge-earned events for each new badge
+        if (earnedBadges.length > 0) {
+          const socketObj = io.sockets.sockets.get(player.socketId);
+          if (socketObj) {
+            for (const badge of earnedBadges) {
+              socketObj.emit('badge-earned', {
+                badge: {
+                  slug: badge.slug,
+                  name: badge.name,
+                  description: badge.description,
+                  icon: badge.icon,
+                  rarity: badge.rarity
+                },
+                context: 'agent-battle',
+                battleId
+              });
+              logger.info(`[Badges] User ${player.userId} earned badge: ${badge.slug} from agent battle`);
+            }
+          }
+        }
+      } catch (badgeErr) {
+        logger.error(`[Badges] Error checking badges for player ${player.userId}:`, badgeErr);
+      }
+    }
+
+    // Update challenge progress for both players
+    const agentChallenges = require('./services/agentChallenges');
+    for (const player of battle.players) {
+      try {
+        const isWinner = player.userId === winnerId;
+
+        // Get active challenges for this player
+        const activeChallenges = await db.getActiveChallenges();
+
+        for (const challenge of activeChallenges) {
+          const battleData = {
+            winner: isWinner ? 'player' : 'opponent',
+            aiModel: battle.players.find(p => p.userId !== player.userId).loadout.model,
+            language: player.loadout.language,
+            duration: player.executionTime ? Math.floor(player.executionTime / 1000) : 0
+          };
+
+          // Check if this battle matches the challenge requirement
+          if (agentChallenges.checkBattleMatchesRequirement(battleData, challenge.requirement_type, challenge.requirement_value)) {
+            // Get current progress
+            const currentProgress = await db.getChallengeProgress(player.userId, challenge.id);
+            const progressValue = currentProgress ? currentProgress.progress : 0;
+
+            // Calculate new progress
+            let newProgress = agentChallenges.calculateProgress(progressValue, challenge, battleData);
+
+            // Special handling for streak challenges
+            if (challenge.requirement_type === 'streak') {
+              if (isWinner) {
+                newProgress = progressValue + 1;
+              } else {
+                newProgress = 0; // Reset on loss
+              }
+            }
+
+            // Check if completed
+            const completed = agentChallenges.isChallengeComplete(newProgress, challenge);
+
+            // Update progress
+            await db.updateChallengeProgress(
+              player.userId,
+              challenge.id,
+              newProgress,
+              completed ? 1 : 0,
+              completed ? new Date().toISOString() : null
+            );
+
+            logger.info(`[Agent Challenges] Updated progress for user ${player.userId}, challenge ${challenge.id}: ${newProgress}/${challenge.requirement_value.count}${completed ? ' (COMPLETED)' : ''}`);
+
+            // Notify player of progress update
+            const socketObj = io.sockets.sockets.get(player.socketId);
+            if (socketObj) {
+              socketObj.emit('challenge-progress-updated', {
+                challengeId: challenge.id,
+                progress: newProgress,
+                completed: completed,
+                challenge: {
+                  title: challenge.title,
+                  description: challenge.description,
+                  type: challenge.type,
+                  requirementType: challenge.requirement_type,
+                  requirementValue: challenge.requirement_value,
+                  rewardType: challenge.reward_type,
+                  rewardValue: challenge.reward_value
+                }
+              });
+            }
+          }
+        }
+      } catch (challengeErr) {
+        logger.error(`[Agent Challenges] Error updating progress for player ${player.userId}:`, challengeErr);
+      }
+    }
+
+    // Cleanup: Remove battle from memory after 5 minutes (allow late spectators to see result)
+    // Track timer for cleanup on shutdown (Medium #9 fix)
+    const battleCleanupTimer = setTimeout(() => {
+      if (global.agentBattles?.has(battleId)) {
+        global.agentBattles.delete(battleId);
+        logger.debug(`[Agent Battle] Cleaned up battle ${battleId} from memory`);
+      }
+      global.agentCleanupTimers?.delete(battleId);
+    }, 5 * 60 * 1000);
+    global.agentCleanupTimers?.set(battleId, battleCleanupTimer);
+  }
+
+  // ============================================================================
+  // AGENT TOURNAMENT SOCKET EVENTS
+  // ============================================================================
+
+  /**
+   * Join a tournament room to receive live updates
+   */
+  socket.on('join-agent-tournament', async (data) => {
+    try {
+      const { tournamentId } = data;
+      if (!tournamentId) {
+        socket.emit('error', { message: 'Tournament ID required' });
+        return;
+      }
+
+      const roomName = `agent-tournament-${tournamentId}`;
+      socket.join(roomName);
+      logger.debug(`Socket ${socket.id} joined agent tournament room: ${roomName}`);
+
+      socket.emit('joined-agent-tournament', { tournamentId });
+    } catch (err) {
+      logger.error('Error joining agent tournament:', err);
+      socket.emit('error', { message: 'Failed to join tournament' });
+    }
+  });
+
+  /**
+   * Leave a tournament room
+   */
+  socket.on('leave-agent-tournament', async (data) => {
+    try {
+      const { tournamentId } = data;
+      if (!tournamentId) return;
+
+      const roomName = `agent-tournament-${tournamentId}`;
+      socket.leave(roomName);
+      logger.debug(`Socket ${socket.id} left agent tournament room: ${roomName}`);
+    } catch (err) {
+      logger.error('Error leaving agent tournament:', err);
+    }
+  });
+
+  /**
+   * Notify all tournament participants when bracket is updated
+   * Called internally when matches complete or new rounds start
+   */
+  function notifyTournamentUpdate(tournamentId, updateType, data) {
+    const roomName = `agent-tournament-${tournamentId}`;
+    io.to(roomName).emit('agent-tournament-update', {
+      tournamentId,
+      updateType, // 'match-complete', 'round-start', 'tournament-complete'
+      data
+    });
+  }
+
+  /**
+   * Notify specific players their match is ready
+   */
+  function notifyTournamentMatchReady(tournamentId, matchId, player1Id, player2Id) {
+    // Find sockets for both players
+    const sockets = Array.from(io.sockets.sockets.values());
+
+    for (const playerSocket of sockets) {
+      if (playerSocket.userId === player1Id || playerSocket.userId === player2Id) {
+        playerSocket.emit('agent-tournament-match-ready', {
+          tournamentId,
+          matchId,
+          message: 'Your tournament match is ready to start!'
+        });
+      }
+    }
+  }
+
+  // Make helper functions available globally for use in routes
+  if (!global.tournamentNotifiers) {
+    global.tournamentNotifiers = {
+      notifyTournamentUpdate,
+      notifyTournamentMatchReady
+    };
+  }
+  }
+
   socket.on('disconnect', async () => {
   try {
     logger.debug('\n ===== SOCKET DISCONNECT =====');
@@ -10597,6 +12995,80 @@ io.on('connection', (socket) => {
 
     // Clean up matchmaking interval using helper
     clearSocketInterval(socket, 'matchCheckInterval');
+
+    // Clean up agent matchmaking queue on disconnect
+    if (global.agentMatchmakingQueue) {
+      for (const [oderId, entry] of global.agentMatchmakingQueue.entries()) {
+        if (entry.socketId === socket.id) {
+          // Bug 4 follow-up: refund the held reservation on socket disconnect.
+          if (entry.reservationId) {
+            releaseReservation(entry.reservationId).catch(refundErr => {
+              logger.warn(`[Agent Queue] releaseReservation failed on disconnect user=${oderId}: ${refundErr.message}`);
+            });
+          }
+          global.agentMatchmakingQueue.delete(oderId);
+          // Also clear matchmaking lock for this user (High #5 fix)
+          if (global.agentMatchmakingLocks) {
+            global.agentMatchmakingLocks.delete(oderId);
+          }
+          logger.debug(`[Agent Queue] Removed ${entry.username} (user ${oderId}) from agent queue on disconnect`);
+          break;
+        }
+      }
+    }
+
+    // Clean up rematch requests on disconnect
+    if (global.agentRematchRequests) {
+      for (const [battleId, requests] of global.agentRematchRequests.entries()) {
+        // Remove any requests from this socket
+        for (const [oderId, request] of requests.entries()) {
+          if (request.socketId === socket.id) {
+            requests.delete(oderId);
+            logger.debug(`[Agent Rematch] Removed rematch request for user ${oderId} on disconnect`);
+          }
+        }
+        // Clean up empty battle request maps
+        if (requests.size === 0) {
+          global.agentRematchRequests.delete(battleId);
+        }
+      }
+    }
+
+    // Clean up rematch locks on disconnect
+    if (global.agentRematchLocks) {
+      // We can't easily know which battles this user was involved in,
+      // so we rely on the timeout cleanup in the rematch handler
+    }
+
+    // Clean up agent battle spectators on disconnect
+    if (socket.agentBattleRooms && global.agentBattles) {
+      const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+      if (token) {
+        try {
+          const jwtLib = require('jsonwebtoken');
+          const decoded = jwtLib.verify(token, SECRET);
+          const userId = decoded.sub;
+
+          for (const battleId of socket.agentBattleRooms) {
+            const battle = global.agentBattles.get(battleId);
+            if (battle && battle.spectators) {
+              battle.spectators.delete(userId);
+
+              // Emit updated spectator count
+              const roomName = `agent-battle-${battleId}`;
+              io.to(roomName).emit('spectator-count-update', {
+                battleId,
+                spectatorCount: battle.spectators.size
+              });
+
+              logger.debug(`[Agent Battle] Removed spectator ${userId} from battle ${battleId} on disconnect`);
+            }
+          }
+        } catch (err) {
+          logger.error('Error cleaning up agent battle spectators on disconnect:', err);
+        }
+      }
+    }
 
     // CRITICAL FIX: Don't immediately remove from queue
     // Give them 5 seconds to reconnect (for page navigation)
@@ -10771,6 +13243,15 @@ function clearAllIntervals() {
   if (tournamentMatchReadyCleanupInterval) clearInterval(tournamentMatchReadyCleanupInterval);
   if (timerSyncInterval) clearInterval(timerSyncInterval);
   cleanupFriendsInterval();
+
+  // Clear all agent battle cleanup timers (Medium #9 fix)
+  if (global.agentCleanupTimers) {
+    for (const [battleId, timerId] of global.agentCleanupTimers.entries()) {
+      clearTimeout(timerId);
+      logger.debug(`[Shutdown] Cleared cleanup timer for battle ${battleId}`);
+    }
+    global.agentCleanupTimers.clear();
+  }
 
 }
 

@@ -1,4 +1,5 @@
 import {
+  Cpu,
   Target, Users, Trophy, Swords, Wand2, Gamepad2, Sparkles, Bot,
 } from 'lucide-react';
 
@@ -40,6 +41,16 @@ export const MODES = [
       subtitle: 'Find opponent instantly',
       description: 'Get matched with developers worldwide for a live coding or prompt-engineering battle.',
       features: ['Auto-matching', 'Skill-based pairing', 'Coding or prompt battles', 'Fast setup'],
+    },
+  },
+  {
+    id: 'agent-battles', title: 'Agent Battles', route: '/agent-battles', icon: Cpu, color: 'purple',
+    search: { keywords: ['agent', 'ai vs ai', 'battle', 'bots', 'agents'] },
+    playMenu: { tagline: 'Build AI loadouts & battle', badge: 'Beta' },
+    modesPage: {
+      subtitle: 'AI vs AI combat',
+      description: 'Build and customize AI agents to battle other players. Configure models, prompts, and tools.',
+      features: ['Build AI loadouts', 'Agent vs Agent', 'Live battles', 'Agent ELO'],
     },
   },
   {

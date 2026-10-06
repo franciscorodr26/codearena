@@ -186,6 +186,22 @@ function getByIdForFrontend(id) {
   return getVisibleProblem(getById(id));
 }
 
+// Agent battles: the full problem (with every test, for grading) plus the
+// player-facing examples and starter code the agent is prompted with.
+function toAgentProblem(problem) {
+  if (!problem) return null;
+  const visible = getVisibleProblem(problem);
+  return { ...problem, examples: visible.examples, starterCode: visible.starterCode };
+}
+
+function getAgentProblem(id) {
+  return toAgentProblem(getById(id));
+}
+
+function getAgentProblems(difficulty) {
+  return (difficulty ? loadByDifficulty(difficulty) : getAll()).map(toAgentProblem);
+}
+
 function getLanguageRejection(problem, language) {
   if (!problem) return null;
   if (problem.runnableLanguages.includes(language)) return null;
@@ -211,6 +227,8 @@ module.exports = {
   getVisibleProblem,
   getByIdForFrontend,
   getLanguageRejection,
+  getAgentProblem,
+  getAgentProblems,
   normalizeDifficulty,
   formatArgs,
   formatArgList
