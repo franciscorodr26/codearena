@@ -46,3 +46,18 @@ describe('open-edition agent battle', () => {
     expect(prompt.length).toBeLessThan(6000);
   });
 });
+
+// Found by a real-model battle: replies with prose after the fence left the
+// fence in the submitted code, so every test failed with a syntax error.
+describe('agent reply code extraction', () => {
+  const { extractCode } = require('../services/agentSolver');
+  test.each([
+    ['```python\ndef f(x):\n    return x\n```\n\nThe solution works as follows:\n1. Sort', 'python', 'def f(x):\n    return x'],
+    ['Here you go:\n```javascript\nfunction f(x) { return x }\n```\nDone.', 'javascript', 'function f(x) { return x }'],
+    ['```py\ndef g():\n    pass\n```', 'python', 'def g():\n    pass'],
+    ['```\nfunction h() {}\n```', 'javascript', 'function h() {}'],
+    ['def plain():\n    return 1', 'python', 'def plain():\n    return 1']
+  ])('extracts clean code from %#', (reply, language, expected) => {
+    expect(extractCode(reply, language)).toBe(expected);
+  });
+});

@@ -9,6 +9,7 @@ const { generateSecret, generateURI, verifySync } = require('otplib');
 const QRCode = require('qrcode');
 const db = require('../db');
 const logger = require('../utils/logger');
+const { notifySessionsChanged } = require('../utils/securityEvents');
 const { isValidAdminKey } = require('../utils/adminKeyGuard');
 const { sessionUserFromRequest } = require('../utils/sessionAuthentication');
 const {
@@ -1152,6 +1153,7 @@ router.post('/google', async (req, res, next) => {
         // Link Google account to existing user
         const link = await db.linkOAuthIdentity(existingUser.id, 'google', googleId);
         if (link.reclaimed) {
+          notifySessionsChanged(existingUser.id);
           logger.warn(`[AUTH] google sign-in reclaimed unverified account ${existingUser.id}: earlier password, sessions and second factors removed`);
         }
         user = await db.getUserById(existingUser.id);
@@ -1431,6 +1433,7 @@ router.post('/github', async (req, res, next) => {
         // Link GitHub account to existing user
         const link = await db.linkOAuthIdentity(existingUser.id, 'github', githubId);
         if (link.reclaimed) {
+          notifySessionsChanged(existingUser.id);
           logger.warn(`[AUTH] github sign-in reclaimed unverified account ${existingUser.id}: earlier password, sessions and second factors removed`);
         }
         user = await db.getUserById(existingUser.id);
@@ -1920,6 +1923,7 @@ router.post('/reset-password', resetPasswordLimiter, chains.resetPassword, async
 
     // SECURITY: Increment token version to invalidate all existing sessions
     await db.incrementTokenVersion(row.user_id);
+    notifySessionsChanged(row.user_id);
 
     res.json({ success: true });
   } catch (err) {
@@ -2452,6 +2456,7 @@ router.post('/logout', authMiddleware, async (req, res, next) => {
     if (req.authSession?.id) {
       await db.deleteSession(req.authSession.id, userId);
     }
+    notifySessionsChanged(userId);
     res.json({ success: true, message: 'Signed out' });
   } catch (err) {
     logger.error('[AUTH] Logout error:', err);
@@ -2464,6 +2469,7 @@ router.post('/sessions/revoke-all', authMiddleware, async (req, res, next) => {
   try {
     const userId = req.user.sub;
     await db.deleteOtherSessions(userId, req.tokenHash);
+    notifySessionsChanged(userId);
 
     res.json({ success: true, message: 'All other sessions have been signed out' });
   } catch (err) {
@@ -2478,6 +2484,16 @@ router.post('/sessions/revoke-all', authMiddleware, async (req, res, next) => {
 // ============================================
 
 // TOTP configuration
+// Check a code and mark its time step as used, so the same code cannot be
+// accepted twice. A replayed code is reported as invalid.
+async function verifyFreshTotp(userId, code, secret) {
+  const result = verifySync({ token: code, secret, window: TOTP_WINDOW });
+  if (!result.valid) return result;
+  const step = Number(result.timeStep) + Number(result.delta || 0);
+  if (!(await db.claimTotpStep(userId, step))) return { valid: false, replayed: true };
+  return result;
+}
+
 // window: 1 means codes from +/- 1 time step are accepted (handles clock drift)
 const TOTP_WINDOW = 1;
 
@@ -2675,7 +2691,7 @@ router.post('/2fa/verify-setup', authMiddleware, twoFactorLimiter, async (req, r
     }
 
     // Verify the code with window tolerance
-    const verifyResult = verifySync({ token: code, secret, window: TOTP_WINDOW });
+    const verifyResult = await verifyFreshTotp(userId, code, secret);
     const isValid = verifyResult.valid;
     if (!isValid) {
       await db.log2FAAction(userId, '2fa_setup_verify_failed', false, ipAddress, userAgent, { reason: 'invalid_code' });
@@ -2793,7 +2809,7 @@ router.post('/2fa/verify', twoFactorLimiter, async (req, res, next) => {
     }
 
     // Verify the TOTP code
-    const verifyResult = verifySync({ token: code, secret, window: TOTP_WINDOW });
+    const verifyResult = await verifyFreshTotp(userId, code, secret);
     const isValid = verifyResult.valid;
     if (!isValid) {
       await db.log2FAAction(userId, '2fa_verify_login', false, ipAddress, userAgent, { reason: 'invalid_code' });
@@ -3146,7 +3162,7 @@ router.post('/2fa/disable', authMiddleware, twoFactorLimiter, async (req, res, n
       return res.status(400).json({ error: 'Could not verify 2FA code' });
     }
 
-    const verifyResult = verifySync({ token: code, secret, window: TOTP_WINDOW });
+    const verifyResult = await verifyFreshTotp(userId, code, secret);
     if (!verifyResult.valid) {
       await db.log2FAAction(userId, '2fa_disable_failed', false, ipAddress, userAgent, { reason: 'invalid_code' });
       return res.status(400).json({ error: 'Invalid 2FA code' });
@@ -3259,7 +3275,7 @@ router.post('/2fa/regenerate-backup-codes', authMiddleware, twoFactorLimiter, as
           return res.status(400).json({ error: 'Could not verify 2FA code' });
         }
 
-        const verifyResult = verifySync({ token: code, secret, window: TOTP_WINDOW });
+        const verifyResult = await verifyFreshTotp(userId, code, secret);
         if (!verifyResult.valid) {
           await db.log2FAAction(userId, '2fa_regenerate_codes_failed', false, ipAddress, userAgent, { reason: 'invalid_code' });
           return res.status(400).json({ error: 'Invalid 2FA code' });
@@ -3493,7 +3509,7 @@ router.post('/verify-password', authMiddleware, twoFactorLimiter, async (req, re
         });
       }
 
-      const verifyResult = verifySync({ token: totpCode, secret, window: TOTP_WINDOW });
+      const verifyResult = await verifyFreshTotp(userId, totpCode, secret);
       if (!verifyResult.valid) {
         await db.log2FAAction(userId, 'verify_password_failed', false, ipAddress, userAgent, { reason: 'invalid_totp' });
         return res.status(401).json({ error: 'Invalid TOTP code' });

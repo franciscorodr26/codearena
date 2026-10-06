@@ -91,7 +91,7 @@ test('the public problem view never includes hidden test data', () => {
     assert.ok(view.starterCode.javascript.includes(problem.function.name))
     assert.ok(view.starterCode.python.includes(problem.function.pythonName))
   }
-  assert.equal(problems.length, 25)
+  assert.equal(problems.length, 45)
 })
 
 test('compare modes', () => {

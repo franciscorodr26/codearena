@@ -298,19 +298,15 @@ function stripTestCode(code, language) {
 function extractCode(response, language) {
   let code = response.trim();
 
-  // Remove markdown code blocks if present
+  // Take the code out of a markdown fence wherever it is: models often add an
+  // explanation after (or a sentence before) the block. Prefer a block tagged
+  // with the agent's language, then any fenced block.
   const langExt = LANGUAGE_EXTENSIONS[language.toLowerCase()] || language.toLowerCase();
-  const codeBlockRegex = new RegExp(`^\`\`\`(?:${langExt}|${language})?\\n([\\s\\S]*?)\\n\`\`\`$`, 'i');
-  const match = code.match(codeBlockRegex);
+  const tagged = new RegExp(`\`\`\`(?:${langExt}|${language})[^\\n]*\\n([\\s\\S]*?)\`\`\``, 'i');
+  const match = code.match(tagged) || code.match(/```[^\n]*\n([\s\S]*?)```/);
 
   if (match) {
     code = match[1];
-  } else {
-    // Try generic code block
-    const genericMatch = code.match(/^```\n?([\s\S]*?)\n?```$/);
-    if (genericMatch) {
-      code = genericMatch[1];
-    }
   }
 
   // Strip test code that might trigger security filters
@@ -605,6 +601,7 @@ async function generateSolutionStreaming(problem, loadout, onChunk, onToolUse = 
 }
 
 module.exports = {
+  extractCode,
   generateSolution,
   generateSolutionStreaming,
   MODEL_MAP

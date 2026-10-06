@@ -3426,6 +3426,11 @@ const migrations = [
           CREATE UNIQUE INDEX IF NOT EXISTS idx_credit_transactions_provider_payment
             ON credit_transactions(provider_payment_id)
             WHERE provider_payment_id IS NOT NULL`
+  },
+  {
+    id: 953,
+    name: 'add_totp_last_step_to_users',
+    sql: `ALTER TABLE users ADD COLUMN totp_last_step INTEGER`
   }
 ];
 
@@ -5054,6 +5059,19 @@ async function createUser(email, passwordHash, username = null, avatar = 'defaul
 
 async function getUserByEmail(email) {
   return get(`SELECT id, email, password, username, avatar, avatar_url, bio, is_online, last_seen, created_at, is_admin FROM users WHERE LOWER(email) = LOWER(?)`, [email]);
+}
+
+// A two-factor code is valid for its 30-second step (plus one step either side
+// for clock drift). Recording the last accepted step and refusing anything at
+// or below it makes every code single-use, so a phished or overheard code
+// cannot be replayed within that window. Returns true when the step is new.
+async function claimTotpStep(userId, step) {
+  if (!Number.isInteger(step)) return false;
+  const result = await run(
+    'UPDATE users SET totp_last_step = ? WHERE id = ? AND (totp_last_step IS NULL OR totp_last_step < ?)',
+    [step, userId, step]
+  );
+  return (result?.changes || 0) === 1;
 }
 
 async function getUserById(id) {
@@ -16426,6 +16444,7 @@ async function getAccountAudit() {
 // ============================================
 
 module.exports = {
+  claimTotpStep,
   db,
   init,
   run,

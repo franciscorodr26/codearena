@@ -441,7 +441,7 @@ router.get('/:username/battles', async (req, res, next) => {
       const problem = problemsLoader.getById(battle.problem_id);
       return {
         ...battle,
-        problem_title: problem ? problem.title : battle.problem_id,
+        problem_title: problemsLoader.displayTitle(battle.problem_id),
         problem_difficulty: problem ? problem.difficulty : null
       };
     });
@@ -488,7 +488,7 @@ router.get('/battles/:battleUuid', authMiddleware, async (req, res, next) => {
         id: battle.id,
         uuid: battle.battle_uuid,
         problem_id: battle.problem_id,
-        problem_title: problem?.title || battle.problem_id,
+        problem_title: problemsLoader.displayTitle(battle.problem_id),
         problem_difficulty: problem?.difficulty || null,
         problem_category: problem?.category || null,
         problem_description: problem?.description || null,

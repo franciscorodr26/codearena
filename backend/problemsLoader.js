@@ -182,6 +182,15 @@ function getVisibleProblem(problem) {
   };
 }
 
+// Title for a problem id seen in battle history. Battles played before the
+// open problem set reference ids that no longer exist; show them readably
+// ("two-sum" becomes "Two Sum") instead of as raw ids.
+function displayTitle(id) {
+  const problem = getById(id);
+  if (problem) return problem.title;
+  return titleCase(String(id || '').replace(/^prob_/, 'Problem ')) || 'Unknown problem';
+}
+
 function getByIdForFrontend(id) {
   return getVisibleProblem(getById(id));
 }
@@ -231,5 +240,6 @@ module.exports = {
   getAgentProblems,
   normalizeDifficulty,
   formatArgs,
+  displayTitle,
   formatArgList
 };

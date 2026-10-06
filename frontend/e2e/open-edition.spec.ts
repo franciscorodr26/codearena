@@ -105,7 +105,7 @@ test.beforeAll(async () => {
   userA = await devSession(1)
   userB = await devSession(2)
   problems = await allProblems()
-  expect(problems.length).toBe(25)
+  expect(problems.length).toBe(45)
 })
 
 test('1. practice warm-up: starter, run, reference solution, custom input, chips, next', async ({ browser }) => {
@@ -177,7 +177,7 @@ test('1. practice warm-up: starter, run, reference solution, custom input, chips
   await context.close()
 })
 
-test('2. problem library lists 25 problems and links into practice', async ({ browser }) => {
+test('2. problem library lists 45 problems and links into practice', async ({ browser }) => {
   const context = await signedInContext(browser, userA)
   const page = await context.newPage()
   const errors: string[] = []
@@ -187,9 +187,9 @@ test('2. problem library lists 25 problems and links into practice', async ({ br
   await dismissWelcome(page)
   await expect(page.getByRole('link', { name: 'Win Streak' })).toBeVisible({ timeout: 30000 })
   const links = page.locator('a[href^="/problems/"]')
-  await expect.poll(() => links.count()).toBeGreaterThanOrEqual(25)
+  await expect.poll(() => links.count()).toBeGreaterThanOrEqual(45)
   await page.getByRole('button', { name: /^hard$/i }).click()
-  await expect.poll(() => links.count()).toBe(5)
+  await expect.poll(() => links.count()).toBe(9)
   await shot(page, '08-problems-hard-filter')
   await page.getByRole('button', { name: /^all$/i }).click()
 

@@ -1235,6 +1235,24 @@ const io = socketIo(server, {
   }
 });
 
+// When a user's sessions change (sign-out, sign out everywhere, password reset,
+// account reclaimed), drop their open sockets whose session is no longer valid.
+require('./utils/securityEvents').securityEvents.on('sessions-changed', async (userId) => {
+  const socketIds = global.userSockets?.get(userId);
+  if (!socketIds) return;
+  for (const socketId of [...socketIds]) {
+    const socket = io.sockets.sockets.get(socketId);
+    if (!socket) continue;
+    try {
+      await authenticateSessionToken(socket.handshake.auth?.token, dbHelper, SECRET);
+    } catch {
+      socket.emit('session-ended', { reason: 'signed_out' });
+      socket.disconnect(true);
+      logger.info(`[AUTH] Disconnected socket ${socketId.slice(0, 8)} for user ${userId}: session no longer valid`);
+    }
+  }
+});
+
 // Socket.io authentication middleware - verify JWT on connection
 io.use(async (socket, next) => {
   const token = socket.handshake.auth?.token;

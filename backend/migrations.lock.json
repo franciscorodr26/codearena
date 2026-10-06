@@ -431,5 +431,6 @@
   "949": "add_completion_notified_at_to_assessment_sessions",
   "950": "add_auto_submitted_to_assessment_sessions",
   "951": "create_consumer_daily_usage",
-  "952": "add_provider_payment_id_to_credit_transactions"
+  "952": "add_provider_payment_id_to_credit_transactions",
+  "953": "add_totp_last_step_to_users"
 }

@@ -44,6 +44,13 @@ describe('problemsLoader (open problem set)', () => {
     expect(loader.getByIdForFrontend('missing')).toBeNull();
   });
 
+  test('battle history titles: known ids use the title, retired ids read as words', () => {
+    expect(loader.displayTitle('win-streak')).toBe('Win Streak');
+    expect(loader.displayTitle('two-sum')).toBe('Two Sum');
+    expect(loader.displayTitle('longest-common-subsequence')).toBe('Longest Common Subsequence');
+    expect(loader.displayTitle('')).toBe('Unknown problem');
+  });
+
   test('language rejection only for languages the runner does not have', () => {
     const problem = loader.getById('win-streak');
     expect(loader.getLanguageRejection(problem, 'python')).toBeNull();
