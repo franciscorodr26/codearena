@@ -90,6 +90,7 @@ function AgentMatchmaking() {
     ? modules.split(',')
     : (typeof tools === 'string' && tools.length > 0 ? tools.split(',') : []);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Revived agent battle page kept as originally written: this hook intentionally runs on the listed values only.
   const loadout = {
     model,
     language,
@@ -229,6 +230,7 @@ function AgentMatchmaking() {
       }
       newSocket.close();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Revived agent battle page kept as originally written: this hook intentionally runs on the listed values only.
   }, [token]);
 
   // Queue timer

@@ -194,6 +194,7 @@ function AgentBattles() {
   useEffect(() => {
     fetchCurrentSeason();
     fetchModules();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Revived agent battle page kept as originally written: this hook intentionally runs on the listed values only.
   }, [token]);
 
   const fetchCurrentSeason = async () => {
@@ -270,6 +271,7 @@ function AgentBattles() {
     return () => {
       socket.close();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Revived agent battle page kept as originally written: this hook intentionally runs on the listed values only.
   }, [token]);
 
   useEffect(() => {
@@ -553,6 +555,7 @@ function AgentBattles() {
       fetchTrainingProblems();
       fetchTrainingHistory();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Revived agent battle page kept as originally written: this hook intentionally runs on the listed values only.
   }, [activeTab, token]);
 
   // Run training

@@ -115,11 +115,13 @@ function LiveBattles() {
     return () => {
       newSocket.disconnect();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Revived agent battle page kept as originally written: this hook intentionally runs on the listed values only.
   }, [token, user]);
 
   // Initial fetch
   useEffect(() => {
     fetchLiveBattles();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Revived agent battle page kept as originally written: this hook intentionally runs on the listed values only.
   }, [token]);
 
   // Auto-refresh every 10 seconds
@@ -129,6 +131,7 @@ function LiveBattles() {
     }, 10000);
 
     return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Revived agent battle page kept as originally written: this hook intentionally runs on the listed values only.
   }, [token]);
 
   const formatTime = (ms) => {

@@ -140,6 +140,7 @@ function AgentReplay() {
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Revived agent battle page kept as originally written: this hook intentionally runs on the listed values only.
   }, [isPlaying, currentEventIndex, events, playbackSpeed]);
 
   // Playback engine
@@ -183,6 +184,7 @@ function AgentReplay() {
         clearTimeout(playbackRef.current);
       }
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Revived agent battle page kept as originally written: this hook intentionally runs on the listed values only.
   }, [isPlaying, currentEventIndex, playbackSpeed, events]);
 
   // Apply event to state
@@ -951,6 +953,7 @@ function AgentReplay() {
           {/* Players Grid */}
           <div className="flex gap-6">
             <div className="flex-1">
+              {/* eslint-disable-next-line react-hooks/static-components -- Revived agent battle page kept as originally written: PlayerPanel holds no state, so remounting it only costs a re-render. */}
               <PlayerPanel
                 player={battle.player1}
                 code={player1Code}
@@ -971,6 +974,7 @@ function AgentReplay() {
             </div>
 
             <div className="flex-1">
+              {/* eslint-disable-next-line react-hooks/static-components -- Revived agent battle page kept as originally written: PlayerPanel holds no state, so remounting it only costs a re-render. */}
               <PlayerPanel
                 player={battle.player2}
                 code={player2Code}

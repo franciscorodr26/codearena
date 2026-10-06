@@ -116,12 +116,18 @@ export default function BugReportModal({ isOpen, onClose }) {
     if (user?.email && !email) {
       setEmail(user.email);
     }
+    // Only fill on open or sign-in; re-running on every email edit would refill a field the user cleared.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, isOpen]);
+
+  // Latest screenshots for the unmount cleanup (the effect itself runs once).
+  const screenshotsRef = useRef(screenshots);
+  useEffect(() => { screenshotsRef.current = screenshots; }, [screenshots]);
 
   // Cleanup previews and timers on unmount
   useEffect(() => {
     return () => {
-      screenshots.forEach(s => {
+      screenshotsRef.current.forEach(s => {
         if (s.preview) URL.revokeObjectURL(s.preview);
       });
       if (closeTimeoutRef.current) {
@@ -130,11 +136,12 @@ export default function BugReportModal({ isOpen, onClose }) {
     };
   }, []);
 
-  // Escape key to close modal
+  // Escape key to close modal (through a ref so it always closes with the current form state)
+  const handleCloseRef = useRef(null);
   useEffect(() => {
     const handleEscape = (e) => {
       if (e.key === 'Escape' && !submitting && !viewingImage) {
-        handleClose();
+        handleCloseRef.current?.();
       }
     };
     if (isOpen) {
@@ -453,6 +460,7 @@ export default function BugReportModal({ isOpen, onClose }) {
       }, 200);
     }
   };
+  useEffect(() => { handleCloseRef.current = handleClose; });
 
   return (
     <>

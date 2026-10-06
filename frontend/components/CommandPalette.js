@@ -67,7 +67,7 @@ const CommandPalette = () => {
         }
         break;
     }
-  }, [isOpen, filteredCommands, selectedIndex, router]);
+  }, [isOpen, filteredCommands, selectedIndex, router, user]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);

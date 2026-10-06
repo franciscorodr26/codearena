@@ -197,6 +197,9 @@ function ProfilePage() {
     } finally {
       if (!isStale()) setLoading(false);
     }
+    // Refetch per profile and sign-in only; router and the viewer's username are read just
+    // for the renamed-profile redirect and must not trigger another fetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [username, token]);
 
   useEffect(() => {

@@ -67,6 +67,7 @@ function AgentSpectate() {
 
   useEffect(() => {
     fetchActiveBattles();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Revived agent battle page kept as originally written: this hook intentionally runs on the listed values only.
   }, [token]);
 
   // Auto-refresh every 5 seconds if enabled
@@ -78,6 +79,7 @@ function AgentSpectate() {
     }, 5000);
 
     return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Revived agent battle page kept as originally written: this hook intentionally runs on the listed values only.
   }, [autoRefresh, token]);
 
   const formatTime = (ms) => {

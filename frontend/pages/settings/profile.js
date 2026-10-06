@@ -61,6 +61,38 @@ import { useToast } from '../../contexts/ToastContext';
 // Section order for keyboard navigation (defined outside component)
 const SECTION_ORDER = ['profile', 'security', 'email', 'notifications', 'privacy', 'editor', 'subscription', 'data', 'help', 'danger'];
 
+// Mobile section header (outside the page so it is not recreated on every render)
+const MobileSectionHeader = ({ id, icon: Icon, title, iconColor = 'text-primary-400', expandedSections, activeSection, onToggle }) => {
+  const isExpanded = expandedSections.includes(id);
+  const isActive = activeSection === id;
+
+  return (
+    <motion.button
+      type="button"
+      onClick={() => onToggle(id)}
+      whileTap={{ scale: 0.98 }}
+      className={`lg:hidden w-full flex items-center justify-between p-4 rounded-xl border mb-3 transition-all ${
+        isActive
+          ? 'bg-surface-800 border-primary-500/50 shadow-lg shadow-primary-500/5'
+          : 'bg-surface-800/50 border-surface-700 hover:border-surface-600'
+      }`}
+    >
+      <div className="flex items-center space-x-3">
+        <div className={`p-1.5 rounded-lg ${isActive ? 'bg-primary-500/20' : 'bg-surface-700/50'}`}>
+          <Icon className={`h-4 w-4 ${isActive ? iconColor : 'text-surface-400'}`} />
+        </div>
+        <span className={`font-medium ${isActive ? 'text-white' : 'text-surface-300'}`}>{title}</span>
+      </div>
+      <motion.div
+        animate={{ rotate: isExpanded ? 180 : 0 }}
+        transition={{ duration: 0.2 }}
+      >
+        <ChevronDown className={`h-5 w-5 ${isActive ? 'text-primary-400' : 'text-surface-500'}`} />
+      </motion.div>
+    </motion.button>
+  );
+};
+
 function ProfileSettings() {
   const router = useRouter();
   const { resetTour, startTour } = useTutorial();
@@ -176,7 +208,8 @@ function ProfileSettings() {
   const helpRef = useRef(null);
   const dangerRef = useRef(null);
 
-  const sectionRefs = {
+  // Refs are stable, so the map is built once.
+  const sectionRefs = useMemo(() => ({
     profile: profileRef,
     security: securityRef,
     email: emailRef,
@@ -187,7 +220,7 @@ function ProfileSettings() {
     data: dataRef,
     help: helpRef,
     danger: dangerRef
-  };
+  }), []);
 
   const [activeSection, setActiveSection] = useState('profile');
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -217,7 +250,7 @@ function ProfileSettings() {
     }
     // On mobile, expand the section
     setExpandedSections(prev => prev.includes(sectionId) ? prev : [...prev, sectionId]);
-  }, []);
+  }, [sectionRefs]);
 
   // Toggle mobile accordion
   const toggleSection = (sectionId) => {
@@ -275,7 +308,7 @@ function ProfileSettings() {
     });
 
     return () => observer.disconnect();
-  }, [isMobile]);
+  }, [isMobile, sectionRefs]);
 
   // Scroll position for "back to top" button
   useEffect(() => {
@@ -315,37 +348,6 @@ function ProfileSettings() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeSection, handleSectionChange]);
 
-  // Mobile section header component
-  const MobileSectionHeader = ({ id, icon: Icon, title, iconColor = 'text-primary-400' }) => {
-    const isExpanded = expandedSections.includes(id);
-    const isActive = activeSection === id;
-
-    return (
-      <motion.button
-        type="button"
-        onClick={() => toggleSection(id)}
-        whileTap={{ scale: 0.98 }}
-        className={`lg:hidden w-full flex items-center justify-between p-4 rounded-xl border mb-3 transition-all ${
-          isActive
-            ? 'bg-surface-800 border-primary-500/50 shadow-lg shadow-primary-500/5'
-            : 'bg-surface-800/50 border-surface-700 hover:border-surface-600'
-        }`}
-      >
-        <div className="flex items-center space-x-3">
-          <div className={`p-1.5 rounded-lg ${isActive ? 'bg-primary-500/20' : 'bg-surface-700/50'}`}>
-            <Icon className={`h-4 w-4 ${isActive ? iconColor : 'text-surface-400'}`} />
-          </div>
-          <span className={`font-medium ${isActive ? 'text-white' : 'text-surface-300'}`}>{title}</span>
-        </div>
-        <motion.div
-          animate={{ rotate: isExpanded ? 180 : 0 }}
-          transition={{ duration: 0.2 }}
-        >
-          <ChevronDown className={`h-5 w-5 ${isActive ? 'text-primary-400' : 'text-surface-500'}`} />
-        </motion.div>
-      </motion.button>
-    );
-  };
 
   return (
     <>
@@ -391,7 +393,7 @@ function ProfileSettings() {
             <div className="flex-1 space-y-8 max-w-2xl">
               {/* Profile Section */}
               <div ref={profileRef}>
-                <MobileSectionHeader id="profile" icon={User} title="Profile" />
+                <MobileSectionHeader id="profile" icon={User} title="Profile" expandedSections={expandedSections} activeSection={activeSection} onToggle={toggleSection} />
                 <AnimatePresence>
                   {(expandedSections.includes('profile') || typeof window !== 'undefined' && window.innerWidth >= 1024) && (
                     <SettingsSection
@@ -714,7 +716,7 @@ function ProfileSettings() {
 
               {/* Security Section */}
               <div ref={securityRef}>
-                <MobileSectionHeader id="security" icon={Lock} title="Security" iconColor="text-warning" />
+                <MobileSectionHeader id="security" icon={Lock} title="Security" iconColor="text-warning" expandedSections={expandedSections} activeSection={activeSection} onToggle={toggleSection} />
                 <AnimatePresence>
                   {(expandedSections.includes('security') || typeof window !== 'undefined' && window.innerWidth >= 1024) && (
                     <SettingsSection
@@ -772,7 +774,7 @@ function ProfileSettings() {
 
               {/* Email Section */}
               <div ref={emailRef}>
-                <MobileSectionHeader id="email" icon={Mail} title="Email" />
+                <MobileSectionHeader id="email" icon={Mail} title="Email" expandedSections={expandedSections} activeSection={activeSection} onToggle={toggleSection} />
                 <AnimatePresence>
                   {(expandedSections.includes('email') || typeof window !== 'undefined' && window.innerWidth >= 1024) && (
                     <SettingsSection
@@ -903,7 +905,7 @@ function ProfileSettings() {
 
               {/* Notifications Section */}
               <div ref={notificationsRef}>
-                <MobileSectionHeader id="notifications" icon={Bell} title="Notifications" iconColor="text-secondary-400" />
+                <MobileSectionHeader id="notifications" icon={Bell} title="Notifications" iconColor="text-secondary-400" expandedSections={expandedSections} activeSection={activeSection} onToggle={toggleSection} />
                 <AnimatePresence>
                   {(expandedSections.includes('notifications') || typeof window !== 'undefined' && window.innerWidth >= 1024) && (
                     <SettingsSection
@@ -1021,7 +1023,7 @@ function ProfileSettings() {
 
               {/* Privacy Section */}
               <div ref={privacyRef}>
-                <MobileSectionHeader id="privacy" icon={Lock} title="Privacy" />
+                <MobileSectionHeader id="privacy" icon={Lock} title="Privacy" expandedSections={expandedSections} activeSection={activeSection} onToggle={toggleSection} />
                 <AnimatePresence>
                   {(expandedSections.includes('privacy') || typeof window !== 'undefined' && window.innerWidth >= 1024) && (
                     <SettingsSection
@@ -1053,7 +1055,7 @@ function ProfileSettings() {
 
               {/* Editor Section */}
               <div ref={editorRef}>
-                <MobileSectionHeader id="editor" icon={Code2} title="Editor" iconColor="text-secondary-400" />
+                <MobileSectionHeader id="editor" icon={Code2} title="Editor" iconColor="text-secondary-400" expandedSections={expandedSections} activeSection={activeSection} onToggle={toggleSection} />
                 <AnimatePresence>
                   {(expandedSections.includes('editor') || typeof window !== 'undefined' && window.innerWidth >= 1024) && (
                     <SettingsSection
@@ -1079,7 +1081,7 @@ function ProfileSettings() {
 
               {/* Billing Section */}
               <div ref={subscriptionRef}>
-                <MobileSectionHeader id="subscription" icon={User} title="Billing" iconColor="text-warning" />
+                <MobileSectionHeader id="subscription" icon={User} title="Billing" iconColor="text-warning" expandedSections={expandedSections} activeSection={activeSection} onToggle={toggleSection} />
                 <AnimatePresence>
                   {(expandedSections.includes('subscription') || typeof window !== 'undefined' && window.innerWidth >= 1024) && (
                     <SettingsSection
@@ -1120,7 +1122,7 @@ function ProfileSettings() {
 
               {/* Data Export Section */}
               <div ref={dataRef}>
-                <MobileSectionHeader id="data" icon={Download} title="Data Export" iconColor="text-surface-400" />
+                <MobileSectionHeader id="data" icon={Download} title="Data Export" iconColor="text-surface-400" expandedSections={expandedSections} activeSection={activeSection} onToggle={toggleSection} />
                 <AnimatePresence>
                   {(expandedSections.includes('data') || typeof window !== 'undefined' && window.innerWidth >= 1024) && (
                     <SettingsSection
@@ -1157,7 +1159,7 @@ function ProfileSettings() {
 
               {/* Help Section */}
               <div ref={helpRef}>
-                <MobileSectionHeader id="help" icon={HelpCircle} title="Help" />
+                <MobileSectionHeader id="help" icon={HelpCircle} title="Help" expandedSections={expandedSections} activeSection={activeSection} onToggle={toggleSection} />
                 <AnimatePresence>
                   {(expandedSections.includes('help') || typeof window !== 'undefined' && window.innerWidth >= 1024) && (
                     <SettingsSection
@@ -1190,7 +1192,7 @@ function ProfileSettings() {
 
               {/* Danger Zone Section */}
               <div ref={dangerRef}>
-                <MobileSectionHeader id="danger" icon={AlertTriangle} title="Danger Zone" iconColor="text-danger" />
+                <MobileSectionHeader id="danger" icon={AlertTriangle} title="Danger Zone" iconColor="text-danger" expandedSections={expandedSections} activeSection={activeSection} onToggle={toggleSection} />
                 <AnimatePresence>
                   {(expandedSections.includes('danger') || typeof window !== 'undefined' && window.innerWidth >= 1024) && (
                     <SettingsSection

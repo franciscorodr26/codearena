@@ -421,6 +421,7 @@ export function MessagingProvider({ children }) {
     };
     // Depend on user?.id, not user: re-rendering with a new user object
     // (rating update, stats refresh, etc.) shouldn't tear down the socket.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, user?.id]);
 
   // Fetch conversations

@@ -324,6 +324,9 @@ function ArenaChallenge() {
         setCode(getStarterCode(p, selectedLanguage));
       }
     }
+    // Keyed on the problem id: the problem object is replaced on every challenge refresh,
+    // and re-running would overwrite the player's code with the starter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLanguage, challenge?.revealed, challenge?.problem?.id, challenge?.id]);
 
   // Save code to localStorage when it changes (debounced)

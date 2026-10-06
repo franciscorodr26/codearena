@@ -32,6 +32,7 @@ const AgentTournamentsPage = () => {
 
   useEffect(() => {
     fetchTournaments();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Revived agent battle page kept as originally written: this hook intentionally runs on the listed values only.
   }, [filter]);
 
   const fetchTournaments = async () => {

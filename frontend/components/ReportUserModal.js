@@ -143,11 +143,13 @@ export default function ReportUserModal({ isOpen, onClose, userId, username }) {
     }
   };
 
-  // Escape key to close modal
+  // Escape key to close modal (through a ref so it always uses the latest onClose)
+  const handleCloseRef = useRef(handleClose);
+  useEffect(() => { handleCloseRef.current = handleClose; });
   useEffect(() => {
     const handleEscape = (e) => {
       if (e.key === 'Escape' && !submitting && !uploading && !viewingImage) {
-        handleClose();
+        handleCloseRef.current();
       }
     };
     if (isOpen) {

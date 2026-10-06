@@ -340,6 +340,7 @@ export function FriendProvider({ children }) {
     // setUser, e.g. after a rating bump) so we don't tear down + reconnect
     // the socket on unrelated user state changes. refreshFriends is omitted
     // because its identity is already keyed on token.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, user?.id]);
 
   // Send a friend request

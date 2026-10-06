@@ -102,6 +102,8 @@ export default function ActiveSessions({ token }) {
     if (token) {
       fetchSessions();
     }
+    // Refetch when the signed-in token changes; fetchSessions only reads the token.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   // Revoke a specific session

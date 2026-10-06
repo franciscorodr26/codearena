@@ -142,6 +142,8 @@ export default function SearchBar({ inputClassName } = {}) {
     }
     document.addEventListener('keydown', handleKey);
     return () => document.removeEventListener('keydown', handleKey);
+    // getSelectableItems and navigateTo are rebuilt each render from exactly these values.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, selectedIndex, isSearchMode, filteredNav, results, user]);
 
   // Close on click outside

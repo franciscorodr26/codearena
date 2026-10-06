@@ -322,6 +322,9 @@ function Battle() {
       const starterCode = getStarterCode(battle.problem.id, selectedLanguage);
       setCode(starterCode);
     }
+    // Keyed on the problem id: battle (and so getStarterCode) changes identity on every
+    // battle update, and re-running here would wipe the player's code mid-battle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLanguage, battle?.problem?.id, languages, setCode, codeLoadedFromStorageRef]);
 
   // CRITICAL FIX: Enhanced URL parameter handling
@@ -1172,13 +1175,19 @@ function Battle() {
 
   }, [
     // Values accessed in handlers
-    battleId, playerId, selectedLanguage, isFromMatchmaking, battleStartTime, battle, code,
+    battleId, playerId, selectedLanguage, isFromMatchmaking, battleStartTime, battle,
     // Timer functions
     startTimer, startRematchTimer, stopRematchTimer,
     // Local activity tracking
     startActivityTracking, stopActivityTracking,
     // Reset functions (consolidated state updates)
     resetAllState, prepareForRematch, resetResultState, resetMatchmakingState, resetRematchState,
+    // Stable refs and state setters (identity never changes)
+    codeLoadedFromStorageRef, countdownIntervalRef, loadingIntervalRef,
+    setAllPlayersReady, setBattleLinkToast, setBattlePhase, setCanStartBattle, setCountdownNumber,
+    setFinishedOpponentCode, setFinishedOpponentLanguage, setFinishedPlayerCode, setFinishedPlayerLanguage,
+    setHiddenTestResults, setIsPartialCredit, setPartialCreditData, setPreloadProgress, setRatingChanges,
+    setShowPreBattleScreen, setStartButtonState,
     // Individual setters still needed in handlers
     setBattle, setBattleState, setBattleViolations, setCode, setConnectionStatus, setError,
     setIntegrityScore, setIsEvaluating, setIsTie, setLoserName, setOpponent, setOpponentViolation,
@@ -1306,6 +1315,8 @@ function Battle() {
       window.removeEventListener('beforeunload', handleBeforeUnload);
       router.events?.off('routeChangeStart', handleRouteChange);
     };
+    // getStarterCode only reads battle, which is already a dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [battleState, battle, battleId, selectedLanguage, timeLeft, code, opponent, user, router.events]);
 
   // Social sharing for battle victories
@@ -1776,7 +1787,7 @@ function Battle() {
       }, 60000);
       pendingTimeoutsRef.current.add(submitSafetyId);
     }
-  }, [battleId, playerId, code, getMetrics, setIsEvaluating, deviceFingerprint]);
+  }, [battleId, playerId, code, getMetrics, setIsEvaluating, setError, deviceFingerprint]);
 
   // When timer reaches 0 during coding, auto-submit so the user isn't stuck
   useEffect(() => {

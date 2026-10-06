@@ -205,7 +205,7 @@ export function TutorialProvider({ children }) {
     stepTimeRef.current = Date.now();
 
     dispatch({ type: 'START_TOUR', payload: tourConfig });
-  }, [state.completedTours, state.dismissedTours]);
+  }, [state.completedTours, state.dismissedTours, state.hasLoadedPersistedState]);
 
   const nextStep = () => {
     if (state.currentStep >= state.totalSteps - 1) {

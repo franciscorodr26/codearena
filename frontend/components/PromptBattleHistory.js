@@ -113,6 +113,8 @@ function BattleDetailModal({ battle, onClose }) {
     if (battle?.id) {
       fetchDetails();
     }
+    // Fetch once per battle; fetchDetails only reads battle.id.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [battle?.id]);
 
   const fetchDetails = async () => {
@@ -293,6 +295,8 @@ export default function PromptBattleHistory({ compact = false, limit = 10 }) {
 
   useEffect(() => {
     fetchHistory();
+    // Initial page load only; later pages are fetched by the pager.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchHistory = async (offset = 0) => {
