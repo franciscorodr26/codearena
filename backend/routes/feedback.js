@@ -53,6 +53,7 @@ const aiLimiter = rateLimit({
 });
 
 const { SECRET } = require('../config/jwt');
+const { sessionUserFromRequest } = require('../utils/sessionAuthentication');
 
 // Create a map for quick problem lookup (initialized once at module load)
 // Using a getter function to handle case where problems aren't loaded yet
@@ -143,21 +144,17 @@ const anthropic = new Anthropic({
 // ============================================
 
 // Auth middleware
-const authMiddleware = (req, res, next) => {
+const authMiddleware = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'No token provided' });
   }
-  try {
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, SECRET);
-    // Compatibility shim: expose both `sub` (JWT canonical) and `id`
-    // (used by the rate limiter keyGenerator and other downstream code).
-    req.user = { ...decoded, id: decoded.sub };
-    next();
-  } catch (err) {
-    return res.status(401).json({ error: 'Invalid token' });
-  }
+  // Signature alone is not enough: the session must still exist and match the
+  // current credential generation (logout, password change, 2FA pending).
+  const user = await sessionUserFromRequest(req, db, SECRET);
+  if (!user) return res.status(401).json({ error: 'Invalid token' });
+  req.user = user;
+  next();
 };
 
 // Pro-only middleware - requires Pro subscription

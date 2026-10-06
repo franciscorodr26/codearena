@@ -12,6 +12,7 @@ const { judgeModelOutput } = require('../services/promptJudgeScore');
 const { getConsumerFairUseLimit } = require('../../shared/codearenaProductMode');
 
 const { SECRET } = require('../config/jwt');
+const { sessionUserFromRequest } = require('../utils/sessionAuthentication');
 
 const router = express.Router();
 const authMiddleware = authRouter.authMiddleware;
@@ -89,9 +90,9 @@ router.get('/', async (req, res, next) => {
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       try {
-        const token = authHeader.split(' ')[1];
-        const decoded = jwt.verify(token, SECRET);
-        const attempt = await db.getArenaAttempt(decoded.sub, challenge.challenge_date);
+        const sessionUser = await sessionUserFromRequest(req, db, SECRET);
+        if (!sessionUser) throw new Error('Invalid session');
+        const attempt = await db.getArenaAttempt(sessionUser.userId, challenge.challenge_date);
         userStarted = !!attempt;
         userCompleted = attempt?.completed || false;
         if (attempt) {

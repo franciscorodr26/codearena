@@ -21,8 +21,16 @@ jest.mock('../db', () => ({
   getBugReportCount: jest.fn(),
   getBugReportById: jest.fn(),
   updateBugReportStatus: jest.fn(),
-  deleteBugReport: jest.fn()
+  deleteBugReport: jest.fn(),
+  // Session checks: tokens from bearerToken() have a live session at version 1.
+  isTokenVersionValid: jest.fn(async (_userId, version) => version === 1),
+  getSessionByTokenHash: jest.fn(async hash => {
+    const userId = mockLiveSessions.get(hash);
+    return userId ? { user_id: userId } : null;
+  }),
+  isUserBanned: jest.fn(async () => null)
 }));
+const mockLiveSessions = new Map();
 
 const db = require('../db');
 const { SECRET } = require('../config/jwt');
@@ -38,12 +46,15 @@ function makeBugReportApp() {
 }
 
 function bearerToken(sub, overrides = {}) {
-  return jwt.sign({
+  const token = jwt.sign({
     sub,
     username: `user-${sub}`,
     email: `user-${sub}@example.com`,
+    tokenVersion: 1,
     ...overrides
-  }, SECRET);
+  }, SECRET, { expiresIn: '1h' });
+  mockLiveSessions.set(require('crypto').createHash('sha256').update(token).digest('hex'), sub);
+  return token;
 }
 
 describe('direct server admin-key guard', () => {

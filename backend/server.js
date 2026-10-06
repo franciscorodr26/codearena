@@ -41,6 +41,7 @@ const { v4: uuidv4 } = require('uuid');
 const { Analytics } = require('./analytics');
 const { config, environments, logLevels } = require('./config/env');
 const { SECRET } = require('./config/jwt');
+const { authenticateSessionToken } = require('./utils/sessionAuthentication');
 const { FRONTEND_URL } = require('./config/appUrls');
 const { requireAdminKey } = require('./utils/adminKeyGuard');
 const {
@@ -87,18 +88,23 @@ const BOT_MATCH_THRESHOLD = 15000;
 const AGENT_PRODUCT_ENABLED = process.env.CODEARENA_AGENT_BATTLES === '1' && Boolean(process.env.ANTHROPIC_API_KEY);
 
 // Helper to optionally extract userId from Authorization header
-function extractUserFromToken(req) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return null;
-  }
+// Signature alone is not enough: the session row must exist and the token's
+// credential generation must be current, so logged-out, pre-password-change
+// and 2FA-pending tokens are rejected here too.
+async function extractUserFromToken(req) {
+  const authHeader = req.headers.authorization
+  if (typeof authHeader !== 'string' || !/^Bearer \S+$/.test(authHeader)) return null
   try {
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, SECRET);
-    return { userId: decoded.sub, username: decoded.username };
-  } catch (err) {
-    return null;
+    return await authenticateSessionToken(authHeader.slice(7), dbHelper, SECRET)
+  } catch {
+    return null
   }
+}
+
+// Session-checked claims for socket handlers that re-read the handshake token.
+async function verifySessionClaims(token) {
+  const { userId, claims } = await authenticateSessionToken(token, dbHelper, SECRET)
+  return { ...claims, sub: userId }
 }
 
 // Check if user's email is verified (required for battles and practice)
@@ -1009,17 +1015,17 @@ function getRateLimitKey(req) {
   try {
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.slice(7);
-      // Decode JWT payload without verification (just for rate limit key)
-      const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
+      // Key on the user only when the signature verifies; a forged payload
+      // must not buy a fresh bucket per request.
+      const payload = jwt.verify(authHeader.slice(7), SECRET, { algorithms: ['HS256'] });
       if (payload.sub) {
         return `user:${payload.sub}`;
       }
     }
   } catch {
-    // Fall back to IP if token parsing fails
+    // Unsigned, expired or malformed: fall back to the client address
   }
-  return req.ip;
+  return rateLimit.ipKeyGenerator(req.ip);
 }
 
 // Pre-auth endpoints must never trust an unverified JWT when deriving their
@@ -1239,9 +1245,7 @@ io.use(async (socket, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, SECRET);
-    // Use consistent number type for userId
-    const userId = parseInt(decoded.sub, 10);
+    const { userId, claims: decoded } = await authenticateSessionToken(token, dbHelper, SECRET);
     socket.userId = userId;
     // Fetch fresh username from DB (JWT may have stale placeholder like player_xxxxx)
     const freshUser = await dbHelper.getUserById(userId);
@@ -4455,7 +4459,7 @@ app.get('/api/battle/:battleId/timer', (req, res) => {
 app.post('/api/practice/run', async (req, res) => {
   try {
     const { code, language, problemId, solveTime } = req.body;
-    const authUser = extractUserFromToken(req);
+    const authUser = await extractUserFromToken(req);
 
     if (!authUser?.userId) {
       return res.status(401).json({
@@ -4566,7 +4570,7 @@ app.post('/api/practice/run', async (req, res) => {
 app.post('/api/practice/run-custom', async (req, res) => {
   try {
     const { code, language, problemId, customInput } = req.body;
-    const authUser = extractUserFromToken(req);
+    const authUser = await extractUserFromToken(req);
 
     if (!authUser?.userId) {
       return res.status(401).json({
@@ -4651,7 +4655,7 @@ app.post('/api/practice/run-custom', async (req, res) => {
 // Practice mode - record attempt (for authenticated users)
 app.post('/api/practice/record', async (req, res) => {
   try {
-    const authUser = extractUserFromToken(req);
+    const authUser = await extractUserFromToken(req);
     if (!authUser) {
       return res.status(401).json({ error: 'Not authenticated', success: false });
     }
@@ -4718,7 +4722,7 @@ app.post('/api/practice/record', async (req, res) => {
 // Practice mode - get accepted solution for the signed-in user and problem
 app.get('/api/practice/solution/:problemId', async (req, res) => {
   try {
-    const authUser = extractUserFromToken(req);
+    const authUser = await extractUserFromToken(req);
     if (!authUser) {
       return res.status(401).json({ error: 'Not authenticated', success: false });
     }
@@ -4749,7 +4753,7 @@ app.get('/api/practice/solution/:problemId', async (req, res) => {
 // Practice mode - get stats
 app.get('/api/practice/stats', async (req, res) => {
   try {
-    const authUser = extractUserFromToken(req);
+    const authUser = await extractUserFromToken(req);
     if (!authUser) {
       return res.status(401).json({ error: 'Not authenticated', success: false });
     }
@@ -4769,7 +4773,7 @@ app.get('/api/practice/stats', async (req, res) => {
 // Get daily usage limits for free tier
 app.get('/api/limits', async (req, res) => {
   try {
-    const authUser = extractUserFromToken(req);
+    const authUser = await extractUserFromToken(req);
     if (!authUser) {
       return res.status(401).json({ error: 'Not authenticated', success: false });
     }
@@ -4916,7 +4920,7 @@ app.post('/api/battle/join/:battleId', async (req, res) => {
     const { playerName = 'Anonymous' } = req.body;
 
     // Require authentication for joining battles
-    const authUser = extractUserFromToken(req);
+    const authUser = await extractUserFromToken(req);
     if (!authUser) {
       return res.status(401).json({
         error: 'Authentication required to join battles',
@@ -5019,7 +5023,7 @@ app.post('/api/battle/:battleId/invite', async (req, res) => {
     const { battleId } = req.params;
 
     // Require authentication
-    const authUser = extractUserFromToken(req);
+    const authUser = await extractUserFromToken(req);
     if (!authUser) {
       return res.status(401).json({
         error: 'Authentication required',
@@ -5100,7 +5104,7 @@ app.post('/api/battle/:battleId/invite/regenerate', async (req, res) => {
     const { battleId } = req.params;
 
     // Require authentication
-    const authUser = extractUserFromToken(req);
+    const authUser = await extractUserFromToken(req);
     if (!authUser) {
       return res.status(401).json({
         error: 'Authentication required',
@@ -5269,7 +5273,7 @@ app.post('/api/battle/invite/:inviteCode/join', async (req, res) => {
     const { inviteCode } = req.params;
 
     // Require authentication
-    const authUser = extractUserFromToken(req);
+    const authUser = await extractUserFromToken(req);
     if (!authUser) {
       return res.status(401).json({
         error: 'Authentication required to join battle',
@@ -5523,7 +5527,7 @@ app.post('/api/matchmaking/join', async (req, res) => {
     const timeLimit = validTimeLimits.includes(requestedTimeLimit) ? requestedTimeLimit : 600;
 
     // Extract user info from token if authenticated (for leaderboard tracking)
-    const authUser = extractUserFromToken(req);
+    const authUser = await extractUserFromToken(req);
     if (!authUser?.userId) {
       return res.status(401).json({
         error: 'Authentication required',
@@ -9340,9 +9344,8 @@ io.on('connection', (socket) => {
         return;
       }
 
-      const decoded = jwt.verify(token, SECRET);
       // Always use number for userId to ensure consistent Map keys
-      const userId = parseInt(decoded.sub, 10);
+      const { userId } = await authenticateSessionToken(token, dbHelper, SECRET);
       logger.debug('[MESSAGING] Token decoded, userId:', userId);
 
       // Store socket mapping
@@ -10460,8 +10463,7 @@ io.on('connection', (socket) => {
         return;
       }
 
-      const jwtLib = require('jsonwebtoken');
-      const decoded = jwtLib.verify(token, SECRET);
+      const decoded = await verifySessionClaims(token);
       const userId = decoded.sub;
 
       // Get match details FIRST so we can verify the caller is one of the two
@@ -10796,8 +10798,7 @@ io.on('connection', (socket) => {
         return;
       }
 
-      const jwtLib = require('jsonwebtoken');
-      const decoded = jwtLib.verify(token, SECRET);
+      const decoded = await verifySessionClaims(token);
       const userId = decoded.sub;
 
       // Get user info
@@ -11105,8 +11106,7 @@ io.on('connection', (socket) => {
       const token = socket.handshake.auth?.token || socket.handshake.query?.token;
       if (!token) return;
 
-      const jwtLib = require('jsonwebtoken');
-      const decoded = jwtLib.verify(token, SECRET);
+      const decoded = await verifySessionClaims(token);
       const userId = decoded.sub;
 
       if (global.agentMatchmakingQueue.has(userId)) {
@@ -11553,7 +11553,7 @@ io.on('connection', (socket) => {
   }
 
   // Join agent battle room for spectating
-  socket.on('join-agent-battle-room', ({ battleId }) => {
+  socket.on('join-agent-battle-room', async ({ battleId }) => {
     try {
       // Verify authentication
       const token = socket.handshake.auth?.token || socket.handshake.query?.token;
@@ -11562,8 +11562,7 @@ io.on('connection', (socket) => {
         return;
       }
 
-      const jwtLib = require('jsonwebtoken');
-      const decoded = jwtLib.verify(token, SECRET);
+      const decoded = await verifySessionClaims(token);
       const userId = decoded.sub;
 
       if (!battleId) return;
@@ -11633,7 +11632,7 @@ io.on('connection', (socket) => {
   });
 
   // Leave agent battle room
-  socket.on('leave-agent-battle-room', ({ battleId }) => {
+  socket.on('leave-agent-battle-room', async ({ battleId }) => {
     try {
       if (!battleId) return;
       const roomName = `agent-battle-${battleId}`;
@@ -11642,8 +11641,7 @@ io.on('connection', (socket) => {
       // Get userId from socket auth
       const token = socket.handshake.auth?.token || socket.handshake.query?.token;
       if (token) {
-        const jwtLib = require('jsonwebtoken');
-        const decoded = jwtLib.verify(token, SECRET);
+        const decoded = await verifySessionClaims(token);
         const userId = decoded.sub;
 
         // Remove from spectators
@@ -11688,8 +11686,7 @@ io.on('connection', (socket) => {
         return;
       }
 
-      const jwtLib = require('jsonwebtoken');
-      const decoded = jwtLib.verify(token, SECRET);
+      const decoded = await verifySessionClaims(token);
       const userId = decoded.sub;
 
       // Verify the battle exists (battles are cleaned up after 5 minutes)
@@ -11848,8 +11845,7 @@ io.on('connection', (socket) => {
         return;
       }
 
-      const jwtLib = require('jsonwebtoken');
-      const decoded = jwtLib.verify(token, SECRET);
+      const decoded = await verifySessionClaims(token);
       const userId = decoded.sub;
 
       // Verify the battle exists (battles are cleaned up after 5 minutes)
@@ -11998,8 +11994,7 @@ io.on('connection', (socket) => {
         return;
       }
 
-      const jwtLib = require('jsonwebtoken');
-      const decoded = jwtLib.verify(token, SECRET);
+      const decoded = await verifySessionClaims(token);
       const userId = decoded.sub;
 
       // Get rematch data
@@ -12044,8 +12039,7 @@ io.on('connection', (socket) => {
       const token = socket.handshake.auth?.token || socket.handshake.query?.token;
       if (!token) return;
 
-      const jwtLib = require('jsonwebtoken');
-      const decoded = jwtLib.verify(token, SECRET);
+      const decoded = await verifySessionClaims(token);
       const userId = decoded.sub;
 
       const rematchData = global.agentRematchRequests.get(battleId);
@@ -13045,8 +13039,7 @@ io.on('connection', (socket) => {
       const token = socket.handshake.auth?.token || socket.handshake.query?.token;
       if (token) {
         try {
-          const jwtLib = require('jsonwebtoken');
-          const decoded = jwtLib.verify(token, SECRET);
+          const decoded = await verifySessionClaims(token);
           const userId = decoded.sub;
 
           for (const battleId of socket.agentBattleRooms) {

@@ -5110,6 +5110,58 @@ async function linkGoogleAccount(userId, googleId) {
   await run(`UPDATE users SET google_id = ? WHERE id = ?`, [googleId, userId]);
 }
 
+// Link a Google or GitHub identity to an existing account found by email.
+//
+// Anyone can register any email address with a password, so an account whose
+// email was never verified proves nothing about who created it. When the real
+// owner later signs in with a provider that has verified the address, the
+// account is handed to them: the earlier password, every session and token,
+// trusted devices, second factors, the other provider link and any pending
+// email change are removed, so whoever registered it first is locked out.
+// A verified account is simply linked.
+async function linkOAuthIdentity(userId, provider, providerId) {
+  const column = provider === 'google' ? 'google_id' : provider === 'github' ? 'github_id' : null;
+  if (!column) throw new Error(`Unknown OAuth provider: ${provider}`);
+  const otherColumn = column === 'google_id' ? 'github_id' : 'google_id';
+  const placeholder = provider === 'google' ? '$google_oauth_user$' : '$github_oauth_user$';
+
+  return withTransaction(async () => {
+    const userLock = await run('UPDATE users SET id = id WHERE id = ?', [userId]);
+    if ((userLock?.changes || 0) !== 1) return { linked: false, reclaimed: false };
+
+    // Conditional on the row still being unverified, so a concurrent
+    // verification cannot be undone and a verified owner is never reset.
+    const reclaim = await run(
+      `UPDATE users
+       SET ${column} = ?, ${otherColumn} = NULL, password = ?,
+           token_version = COALESCE(token_version, 0) + 1,
+           totp_secret = NULL, is_2fa_enabled = 0, two_fa_enabled_at = NULL,
+           two_factor_pending_token = NULL, two_factor_pending_expires = NULL,
+           last_auth_at = NULL,
+           avatar = 'default-1', avatar_url = NULL, bio = NULL,
+           github_url = NULL, linkedin_url = NULL, twitter_url = NULL,
+           github_access_token = NULL,
+           student_email = NULL, student_verified_at = NULL,
+           student_expiration_warning_sent = NULL
+       WHERE id = ? AND COALESCE(email_verified, 0) = 0`,
+      [providerId, placeholder, userId]
+    );
+
+    if ((reclaim?.changes || 0) !== 1) {
+      await run(`UPDATE users SET ${column} = ? WHERE id = ?`, [providerId, userId]);
+      return { linked: true, reclaimed: false };
+    }
+
+    for (const table of ['user_sessions', 'trusted_devices', 'two_factor_backup_codes', 'push_subscriptions', 'user_device_fingerprints', 'user_webhooks']) {
+      await run(`DELETE FROM ${table} WHERE user_id = ?`, [userId]);
+    }
+    for (const table of ['password_resets', 'email_verifications', 'email_changes', 'student_verifications']) {
+      await run(`UPDATE ${table} SET used = 1 WHERE user_id = ? AND used = 0`, [userId]);
+    }
+    return { linked: true, reclaimed: true };
+  });
+}
+
 async function getUserByGitHubId(githubId) {
   return get(`SELECT id, email, username, avatar, avatar_url, bio, github_id, is_online, last_seen, created_at, username_chosen, has_onboarded, is_admin FROM users WHERE github_id = ?`, [githubId]);
 }
@@ -16434,6 +16486,7 @@ module.exports = {
   findValidEmailVerificationByTokenHash,
   markEmailVerificationUsed,
   markUserEmailVerified,
+  linkOAuthIdentity,
   isUserEmailVerified,
 
   // Student verification

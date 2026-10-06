@@ -4,6 +4,7 @@ const rateLimit = require('express-rate-limit');
 const db = require('../db');
 const { authMiddleware } = require('./auth');
 const { SECRET } = require('../config/jwt');
+const { sessionUserFromRequest } = require('../utils/sessionAuthentication');
 const { FRONTEND_URL } = require('../config/appUrls');
 const { CODEARENA_PRODUCT_MODE } = require('../../shared/codearenaProductMode');
 
@@ -33,20 +34,8 @@ const safeParseInt = (value, defaultValue = 0) => {
 };
 
 // Optional auth middleware - parses token if present but doesn't require it
-const optionalAuthMiddleware = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    req.user = null;
-    return next();
-  }
-
-  const token = authHeader.split(' ')[1];
-  try {
-    const decoded = jwt.verify(token, SECRET);
-    req.user = decoded;
-  } catch (err) {
-    req.user = null;
-  }
+const optionalAuthMiddleware = async (req, res, next) => {
+  req.user = await sessionUserFromRequest(req, db, SECRET);
   next();
 };
 

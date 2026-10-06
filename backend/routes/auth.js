@@ -9,6 +9,8 @@ const { generateSecret, generateURI, verifySync } = require('otplib');
 const QRCode = require('qrcode');
 const db = require('../db');
 const logger = require('../utils/logger');
+const { isValidAdminKey } = require('../utils/adminKeyGuard');
+const { sessionUserFromRequest } = require('../utils/sessionAuthentication');
 const {
   sendEmail,
   sendEmailChangeVerification,
@@ -315,6 +317,45 @@ function validatePassword(password) {
 }
 
 // JWT Middleware for protected routes
+// 2FA pending-login tokens, ported from the hardened upstream version. The
+// token carries the credential generation (token_version) it was issued for,
+// so a pending login started before a password reset or a sign-out-everywhere
+// can no longer be completed, and it is typed so no other check accepts it.
+const PENDING_LOGIN_TOKEN_TTL_SECONDS = 5 * 60;
+
+async function issuePendingLoginToken({ userId, rememberMe, tokenVersion }) {
+  const pendingToken = jwt.sign(
+    {
+      sub: userId,
+      type: '2fa_pending',
+      rememberMe,
+      tokenVersion
+    },
+    SECRET,
+    { expiresIn: PENDING_LOGIN_TOKEN_TTL_SECONDS }
+  );
+
+  // Store the pending token hash so a stolen copy cannot be replayed.
+  const pendingTokenHash = crypto.createHash('sha256').update(pendingToken).digest('hex');
+  const expiresAt = Math.floor(Date.now() / 1000) + PENDING_LOGIN_TOKEN_TTL_SECONDS;
+  await db.save2FAPendingToken(userId, pendingTokenHash, expiresAt);
+
+  return pendingToken;
+}
+
+async function isCurrent2FAPendingLogin(pendingData) {
+  return Boolean(
+    pendingData?.type === '2fa_pending'
+    && Number.isInteger(Number(pendingData.tokenVersion))
+    && await db.isTokenVersionValid(pendingData.sub, Number(pendingData.tokenVersion))
+  );
+}
+
+// Compared against when no account matches, so a missing account costs the
+// same bcrypt work as a wrong password and response timing does not reveal
+// which usernames and emails exist.
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync('codearena-timing-equaliser', 10);
+
 async function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -324,6 +365,10 @@ async function authMiddleware(req, res, next) {
   const token = authHeader.split(' ')[1];
   try {
     const decoded = jwt.verify(token, SECRET);
+    // Typed tokens (a 2FA pending login) are never sessions.
+    if (decoded.type) {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
     // Compatibility shim: JWT payload uses `sub` per RFC 7519, but many
     // downstream routes historically read `req.user.id`. Normalize so both
     // work and we don't silently get `undefined` user ids in queries.
@@ -419,13 +464,8 @@ router.get('/check-username/:username?', checkUsernameLimiter, async (req, res, 
     let excludeUserId = null;
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
-      try {
-        const token = authHeader.split(' ')[1];
-        const decoded = jwt.verify(token, SECRET);
-        excludeUserId = decoded.sub;
-      } catch (e) {
-        // Token invalid, just don't exclude any user
-      }
+      const sessionUser = await sessionUserFromRequest(req, db, SECRET);
+      if (sessionUser) excludeUserId = sessionUser.userId;
     }
 
     const available = await db.isUsernameAvailable(username, excludeUserId);
@@ -906,6 +946,7 @@ router.post('/login', chains.login, async (req, res, next) => {
       user = await db.getUserByEmailWithPassword(username.toLowerCase());
     }
     if (!user) {
+      await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
@@ -963,20 +1004,11 @@ router.post('/login', chains.login, async (req, res, next) => {
       if (!loginDeviceToken || !(await db.verifyTrustedDevice(user.id, crypto.createHash('sha256').update(loginDeviceToken || '').digest('hex')))) {
         // 2FA is enabled - issue a pending token instead of a full token
         // The pending token has a short expiration and can only be used for 2FA verification
-        const pendingToken = jwt.sign(
-          {
-            sub: user.id,
-            type: '2fa_pending',
-            rememberMe
-          },
-          SECRET,
-          { expiresIn: '5m' } // 5 minute expiration for 2FA verification
-        );
-
-        // Store the pending token hash in the database for extra security
-        const pendingTokenHash = crypto.createHash('sha256').update(pendingToken).digest('hex');
-        const expiresAt = Math.floor(Date.now() / 1000) + 5 * 60; // 5 minutes
-        await db.save2FAPendingToken(user.id, pendingTokenHash, expiresAt);
+        const pendingToken = await issuePendingLoginToken({
+          userId: user.id,
+          rememberMe,
+          tokenVersion: await db.getTokenVersion(user.id)
+        });
 
         // Log the 2FA challenge
         const ipAddress = req.ip || req.headers['x-forwarded-for']?.split(',')[0]?.trim() || 'unknown';
@@ -1118,7 +1150,10 @@ router.post('/google', async (req, res, next) => {
 
       if (existingUser) {
         // Link Google account to existing user
-        await db.linkGoogleAccount(existingUser.id, googleId);
+        const link = await db.linkOAuthIdentity(existingUser.id, 'google', googleId);
+        if (link.reclaimed) {
+          logger.warn(`[AUTH] google sign-in reclaimed unverified account ${existingUser.id}: earlier password, sessions and second factors removed`);
+        }
         user = await db.getUserById(existingUser.id);
       } else {
         // Create new user with Google
@@ -1173,20 +1208,11 @@ router.post('/google', async (req, res, next) => {
 
     if (is2FAEnabled) {
       // 2FA is enabled - issue a pending token instead of a full token
-      const pendingToken = jwt.sign(
-        {
-          sub: user.id,
-          type: '2fa_pending',
-          rememberMe
-        },
-        SECRET,
-        { expiresIn: '5m' }
-      );
-
-      // Store the pending token hash in the database
-      const pendingTokenHash = crypto.createHash('sha256').update(pendingToken).digest('hex');
-      const expiresAt = Math.floor(Date.now() / 1000) + 5 * 60;
-      await db.save2FAPendingToken(user.id, pendingTokenHash, expiresAt);
+      const pendingToken = await issuePendingLoginToken({
+        userId: user.id,
+        rememberMe,
+        tokenVersion: await db.getTokenVersion(user.id)
+      });
 
       // Log the 2FA challenge
       const ipAddress = req.ip || req.headers['x-forwarded-for']?.split(',')[0]?.trim() || 'unknown';
@@ -1403,7 +1429,10 @@ router.post('/github', async (req, res, next) => {
 
       if (existingUser) {
         // Link GitHub account to existing user
-        await db.linkGitHubAccount(existingUser.id, githubId);
+        const link = await db.linkOAuthIdentity(existingUser.id, 'github', githubId);
+        if (link.reclaimed) {
+          logger.warn(`[AUTH] github sign-in reclaimed unverified account ${existingUser.id}: earlier password, sessions and second factors removed`);
+        }
         user = await db.getUserById(existingUser.id);
       } else {
         // Create new user with GitHub
@@ -1465,20 +1494,11 @@ router.post('/github', async (req, res, next) => {
 
     if (is2FAEnabled) {
       // 2FA is enabled - issue a pending token instead of a full token
-      const pendingToken = jwt.sign(
-        {
-          sub: user.id,
-          type: '2fa_pending',
-          rememberMe
-        },
-        SECRET,
-        { expiresIn: '5m' }
-      );
-
-      // Store the pending token hash in the database
-      const pendingTokenHash = crypto.createHash('sha256').update(pendingToken).digest('hex');
-      const expiresAt = Math.floor(Date.now() / 1000) + 5 * 60;
-      await db.save2FAPendingToken(user.id, pendingTokenHash, expiresAt);
+      const pendingToken = await issuePendingLoginToken({
+        userId: user.id,
+        rememberMe,
+        tokenVersion: await db.getTokenVersion(user.id)
+      });
 
       // Log the 2FA challenge
       const ipAddress = req.ip || req.headers['x-forwarded-for']?.split(',')[0]?.trim() || 'unknown';
@@ -2181,14 +2201,9 @@ function hasValidAdminKey(req) {
     return { valid: false, status: 401, error: 'Unauthorized' };
   }
 
-  const configured = Buffer.from(configuredKey);
-  const provided = Buffer.from(providedKey);
-  if (configured.length !== provided.length) {
-    return { valid: false, status: 401, error: 'Unauthorized' };
-  }
-
+  // Hash both sides first so the comparison leaks neither content nor length.
   return {
-    valid: crypto.timingSafeEqual(configured, provided),
+    valid: isValidAdminKey(providedKey, configuredKey),
     status: 401,
     error: 'Unauthorized'
   };
@@ -2741,6 +2756,10 @@ router.post('/2fa/verify', twoFactorLimiter, async (req, res, next) => {
       return res.status(401).json({ error: 'Invalid or expired login session. Please log in again.' });
     }
 
+    if (!(await isCurrent2FAPendingLogin(pendingData))) {
+      return res.status(401).json({ error: 'Invalid or expired login session. Please log in again.' });
+    }
+
     const userId = pendingData.sub;
     const pendingTokenHash = crypto.createHash('sha256').update(pendingToken).digest('hex');
 
@@ -2788,7 +2807,12 @@ router.post('/2fa/verify', twoFactorLimiter, async (req, res, next) => {
     }
 
     const tokenExpiration = rememberMe ? JWT_EXPIRES_REMEMBER : JWT_EXPIRES_SESSION;
-    const tokenVersion = await db.getTokenVersion(userId);
+    // Issue the session for the credential generation the pending login proved;
+    // if it changed meanwhile, the login must start over.
+    const tokenVersion = Number(pendingData.tokenVersion);
+    if (!(await db.isTokenVersionValid(userId, tokenVersion))) {
+      return res.status(401).json({ error: 'Invalid or expired login session. Please log in again.' });
+    }
 
     const token = jwt.sign(
       {
@@ -2930,6 +2954,10 @@ router.post('/2fa/recovery', twoFactorLimiter, async (req, res, next) => {
       return res.status(401).json({ error: 'Invalid or expired login session. Please log in again.' });
     }
 
+    if (!(await isCurrent2FAPendingLogin(pendingData))) {
+      return res.status(401).json({ error: 'Invalid or expired login session. Please log in again.' });
+    }
+
     const userId = pendingData.sub;
     const pendingTokenHash = crypto.createHash('sha256').update(pendingToken).digest('hex');
 
@@ -2969,7 +2997,12 @@ router.post('/2fa/recovery', twoFactorLimiter, async (req, res, next) => {
     }
 
     const tokenExpiration = rememberMe ? JWT_EXPIRES_REMEMBER : JWT_EXPIRES_SESSION;
-    const tokenVersion = await db.getTokenVersion(userId);
+    // Issue the session for the credential generation the pending login proved;
+    // if it changed meanwhile, the login must start over.
+    const tokenVersion = Number(pendingData.tokenVersion);
+    if (!(await db.isTokenVersionValid(userId, tokenVersion))) {
+      return res.status(401).json({ error: 'Invalid or expired login session. Please log in again.' });
+    }
 
     const token = jwt.sign(
       {
@@ -3404,7 +3437,7 @@ router.delete('/2fa/trusted-devices', authMiddleware, requireRecentAuth, async (
  * Verify password for re-authentication before sensitive actions
  * Updates last_auth_at on success
  */
-router.post('/verify-password', authMiddleware, async (req, res, next) => {
+router.post('/verify-password', authMiddleware, twoFactorLimiter, async (req, res, next) => {
   try {
     const userId = req.user.sub;
     const { password, totpCode } = req.body;

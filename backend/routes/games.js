@@ -2,6 +2,7 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const logger = require('../utils/logger');
 const db = require('../db');
+const { sessionUserFromRequest } = require('../utils/sessionAuthentication');
 const authRouter = require('./auth');
 const { containsProfanity } = require('../utils/contentFilter');
 const emailService = require('../services/email');
@@ -36,15 +37,10 @@ const router = express.Router();
 const authMiddleware = authRouter.authMiddleware;
 
 // Optional auth, sets req.user if token present, doesn't block if missing
-function optionalAuth(req, res, next) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) return next();
-  try {
-    const jwt = require('jsonwebtoken');
-    const { SECRET } = require('../config/jwt');
-    const token = authHeader.split(' ')[1];
-    req.user = jwt.verify(token, SECRET);
-  } catch (e) { /* ignore invalid token */ }
+async function optionalAuth(req, res, next) {
+  const { SECRET } = require('../config/jwt');
+  const user = await sessionUserFromRequest(req, db, SECRET);
+  if (user) req.user = user;
   next();
 }
 

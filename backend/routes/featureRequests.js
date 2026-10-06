@@ -5,40 +5,29 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const logger = require('../utils/logger');
 const { SECRET } = require('../config/jwt');
+const { sessionUserFromRequest } = require('../utils/sessionAuthentication');
 
 // ============================================
 // MIDDLEWARE
 // ============================================
 
 // Optional auth middleware - extracts user if token present, but doesn't require it
-const optionalAuthMiddleware = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    try {
-      const token = authHeader.split(' ')[1];
-      const decoded = jwt.verify(token, SECRET);
-      req.user = decoded;
-    } catch (err) {
-      // Invalid token, but continue without user
-    }
-  }
+const optionalAuthMiddleware = async (req, res, next) => {
+  const user = await sessionUserFromRequest(req, db, SECRET);
+  if (user) req.user = user;
   next();
 };
 
 // Required auth middleware
-const authMiddleware = (req, res, next) => {
+const authMiddleware = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'No token provided' });
   }
-  try {
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, SECRET);
-    req.user = decoded;
-    next();
-  } catch (err) {
-    return res.status(401).json({ error: 'Invalid token' });
-  }
+  const user = await sessionUserFromRequest(req, db, SECRET);
+  if (!user) return res.status(401).json({ error: 'Invalid token' });
+  req.user = user;
+  next();
 };
 
 // Admin middleware

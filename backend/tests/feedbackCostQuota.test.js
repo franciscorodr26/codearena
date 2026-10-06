@@ -14,8 +14,16 @@ jest.mock('express-rate-limit', () => {
 })
 
 jest.mock('../db', () => ({
-  tryConsumeConsumerDailyUsage: jest.fn()
+  tryConsumeConsumerDailyUsage: jest.fn(),
+  // Session checks: every token minted below has a live session at version 1.
+  isTokenVersionValid: jest.fn(async (_userId, version) => version === 1),
+  getSessionByTokenHash: jest.fn(async hash => {
+    const userId = mockLiveSessions.get(hash)
+    return userId ? { user_id: userId } : null
+  }),
+  isUserBanned: jest.fn(async () => null)
 }))
+const mockLiveSessions = new Map()
 
 jest.mock('../utils/logger', () => ({
   info: jest.fn(),
@@ -30,7 +38,9 @@ const { SECRET } = require('../config/jwt')
 const feedbackRouter = require('../routes/feedback')
 
 function tokenFor(userId) {
-  return jwt.sign({ sub: userId }, SECRET, { expiresIn: '1h' })
+  const token = jwt.sign({ sub: userId, tokenVersion: 1 }, SECRET, { expiresIn: '1h' })
+  mockLiveSessions.set(require('crypto').createHash('sha256').update(token).digest('hex'), userId)
+  return token
 }
 
 async function invokeComplexity(userId, body) {

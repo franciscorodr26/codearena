@@ -9,6 +9,7 @@ const fs = require('fs');
 const db = require('../db');
 const logger = require('../utils/logger');
 const { SECRET } = require('../config/jwt');
+const { sessionUserFromRequest } = require('../utils/sessionAuthentication');
 const heicConvert = require('heic-convert');
 const sharp = require('sharp');
 const { BACKEND_URL } = require('../config/appUrls');
@@ -118,19 +119,15 @@ const upload = multer({
 // ============================================
 
 // Required auth middleware
-const authMiddleware = (req, res, next) => {
+const authMiddleware = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'No token provided' });
   }
-  try {
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, SECRET);
-    req.user = decoded;
-    next();
-  } catch (err) {
-    return res.status(401).json({ error: 'Invalid token' });
-  }
+  const user = await sessionUserFromRequest(req, db, SECRET);
+  if (!user) return res.status(401).json({ error: 'Invalid token' });
+  req.user = user;
+  next();
 };
 
 const authenticatedUserRateLimitKey = (req) => `user:${req.user.sub}`;

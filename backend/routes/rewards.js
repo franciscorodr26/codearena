@@ -4,22 +4,20 @@ const jwt = require('jsonwebtoken');
 const rewardService = require('../services/rewardService');
 const logger = require('../utils/logger');
 const { SECRET } = require('../config/jwt');
+const { sessionUserFromRequest } = require('../utils/sessionAuthentication');
 
 // Auth middleware
-function requireAuth(req, res, next) {
+async function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Authentication required' });
   }
-
-  try {
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, SECRET);
-    req.userId = decoded.id || decoded.userId;
-    next();
-  } catch (err) {
-    return res.status(401).json({ error: 'Invalid token' });
-  }
+  const user = await sessionUserFromRequest(req, require('../db'), SECRET);
+  if (!user) return res.status(401).json({ error: 'Invalid token' });
+  // Tokens carry the user id in `sub`; the old `decoded.id || decoded.userId`
+  // read fields no token has, so every reward lookup used an undefined id.
+  req.userId = user.userId;
+  next();
 }
 
 // Get current user's reward stats
