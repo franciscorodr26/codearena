@@ -1,0 +1,182 @@
+{
+  "id": "team-split",
+  "title": "Team Split",
+  "difficulty": "hard",
+  "tags": [
+    "dynamic programming",
+    "subset sum"
+  ],
+  "description": "Split all players into two teams (a team may be empty) so that the total ratings of the two teams are as close as possible. Every player must be on exactly one team.\n\nReturn the smallest possible difference between the two team totals. There are at most 40 players and every rating is between 0 and 3000.",
+  "function": {
+    "name": "minTeamGap",
+    "pythonName": "min_team_gap",
+    "params": [
+      {
+        "name": "ratings",
+        "type": "integer[]"
+      }
+    ],
+    "returns": "integer"
+  },
+  "compare": {
+    "mode": "exact"
+  },
+  "examples": [
+    {
+      "args": [
+        [
+          1500,
+          1200,
+          1300,
+          1400
+        ]
+      ],
+      "expected": 0
+    },
+    {
+      "args": [
+        [
+          2000,
+          900,
+          800
+        ]
+      ],
+      "expected": 300
+    }
+  ],
+  "tests": [
+    {
+      "args": [
+        []
+      ],
+      "expected": 0
+    },
+    {
+      "args": [
+        [
+          1234
+        ]
+      ],
+      "expected": 1234
+    },
+    {
+      "args": [
+        [
+          10,
+          10
+        ]
+      ],
+      "expected": 0
+    },
+    {
+      "args": [
+        [
+          3,
+          1,
+          4,
+          2,
+          2
+        ]
+      ],
+      "expected": 0
+    },
+    {
+      "args": [
+        [
+          357,
+          1211,
+          621,
+          2789,
+          657,
+          1295,
+          1783,
+          608,
+          1943,
+          2576,
+          776,
+          2800
+        ]
+      ],
+      "expected": 6
+    },
+    {
+      "args": [
+        [
+          1689,
+          1592,
+          1862,
+          950,
+          1545,
+          1987,
+          1320,
+          2244,
+          1061,
+          1128,
+          2387,
+          1698,
+          1842,
+          2347,
+          2232,
+          1078,
+          1526,
+          2028,
+          1799,
+          2035,
+          1885,
+          1863,
+          2372,
+          1234,
+          1529
+        ]
+      ],
+      "expected": 1
+    },
+    {
+      "args": [
+        [
+          2456,
+          116,
+          1169,
+          2818,
+          1635,
+          1906,
+          2656,
+          1096,
+          740,
+          544,
+          716,
+          897,
+          2816,
+          2428,
+          359,
+          2484,
+          2829,
+          2837,
+          2773,
+          1441,
+          234,
+          690,
+          1044,
+          1584,
+          2981,
+          949,
+          1314,
+          2740,
+          714,
+          564,
+          2741,
+          1602,
+          557,
+          1147,
+          1310,
+          2307,
+          1028,
+          997,
+          2749,
+          855
+        ]
+      ],
+      "expected": 1
+    }
+  ]
+}

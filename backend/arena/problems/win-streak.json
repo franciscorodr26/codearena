@@ -1,0 +1,94 @@
+{
+  "id": "win-streak",
+  "title": "Win Streak",
+  "difficulty": "easy",
+  "tags": [
+    "strings",
+    "counting"
+  ],
+  "description": "A player's recent results are a string of `W` (win) and `L` (loss), oldest first.\n\nReturn the length of their longest run of consecutive wins.",
+  "function": {
+    "name": "longestWinStreak",
+    "pythonName": "longest_win_streak",
+    "params": [
+      {
+        "name": "results",
+        "type": "string"
+      }
+    ],
+    "returns": "integer"
+  },
+  "compare": {
+    "mode": "exact"
+  },
+  "examples": [
+    {
+      "args": [
+        "WWLWWWL"
+      ],
+      "expected": 3
+    },
+    {
+      "args": [
+        "LLL"
+      ],
+      "expected": 0
+    }
+  ],
+  "tests": [
+    {
+      "args": [
+        ""
+      ],
+      "expected": 0
+    },
+    {
+      "args": [
+        "W"
+      ],
+      "expected": 1
+    },
+    {
+      "args": [
+        "L"
+      ],
+      "expected": 0
+    },
+    {
+      "args": [
+        "WWWW"
+      ],
+      "expected": 4
+    },
+    {
+      "args": [
+        "WLWLWL"
+      ],
+      "expected": 1
+    },
+    {
+      "args": [
+        "LWWLWWWWLW"
+      ],
+      "expected": 4
+    },
+    {
+      "args": [
+        "LWLLWWWWWWWWLLLLWWWWLWWWWLWWWLWWLWLLWWLW"
+      ],
+      "expected": 8
+    },
+    {
+      "args": [
+        "WLWWWWWWLLWWLLWLWLLLWLWWWWLWWLWLLWWWWLWLWWLWWLWWLWLWLWLWLWLLWWLLLLWLLWWLWWLLLLWLWLWLWLWLLLWWLWLWLWLLLWWWLWWLLWLLWLWLWLWLLWWLLWLLLWLLLWWLWWWWLLWLWWLLWWLWLWWLLWWWWWWWLLWWLWWWWWWLWLWWWLWLLLLWLWWLLWWWLWWW"
+      ],
+      "expected": 7
+    },
+    {
+      "args": [
+        "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWLWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW"
+      ],
+      "expected": 500
+    }
+  ]
+}

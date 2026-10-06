@@ -1,0 +1,47 @@
+# Judge0 CE for local development and self-hosting. Adapted from Judge0's
+# official docker-compose (https://github.com/judge0/judge0). The workers need
+# privileged mode for the isolate sandbox. Set the two passwords in judge0.conf
+# before starting, then point the backend at it with JUDGE0_URL=http://localhost:2358.
+#
+#   docker compose -f docker-compose.judge0.yml up -d
+#   curl http://localhost:2358/about
+
+services:
+  judge0-server:
+    image: judge0/judge0:1.13.1
+    volumes:
+      - ./judge0.conf:/judge0.conf:ro
+    ports:
+      - "2358:2358"
+    privileged: true
+    restart: always
+    depends_on:
+      - judge0-db
+      - judge0-redis
+
+  judge0-workers:
+    image: judge0/judge0:1.13.1
+    command: ["./scripts/workers"]
+    volumes:
+      - ./judge0.conf:/judge0.conf:ro
+    privileged: true
+    restart: always
+    depends_on:
+      - judge0-db
+      - judge0-redis
+
+  judge0-db:
+    image: postgres:16.2
+    env_file: judge0.conf
+    volumes:
+      - judge0-postgres:/var/lib/postgresql/data
+    restart: always
+
+  judge0-redis:
+    image: redis:7.2.4
+    command: ["bash", "-c", "docker-entrypoint.sh --appendonly no --requirepass \"$$REDIS_PASSWORD\""]
+    env_file: judge0.conf
+    restart: always
+
+volumes:
+  judge0-postgres:

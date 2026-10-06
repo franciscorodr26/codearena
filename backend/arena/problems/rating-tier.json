@@ -1,0 +1,171 @@
+{
+  "id": "rating-tier",
+  "title": "Rating Tier",
+  "difficulty": "easy",
+  "tags": [
+    "conditionals"
+  ],
+  "description": "CodeArena shows a tier badge next to every rating:\n\n| Rating | Tier |\n|---|---|\n| below 1000 | `Bronze` |\n| 1000 to 1399 | `Silver` |\n| 1400 to 1799 | `Gold` |\n| 1800 to 2199 | `Platinum` |\n| 2200 and above | `Diamond` |\n\nGiven a list of ratings, return the tier for each one, in the same order.",
+  "function": {
+    "name": "ratingTiers",
+    "pythonName": "rating_tiers",
+    "params": [
+      {
+        "name": "ratings",
+        "type": "integer[]"
+      }
+    ],
+    "returns": "string[]"
+  },
+  "compare": {
+    "mode": "exact"
+  },
+  "examples": [
+    {
+      "args": [
+        [
+          950,
+          1000,
+          1850
+        ]
+      ],
+      "expected": [
+        "Bronze",
+        "Silver",
+        "Platinum"
+      ]
+    },
+    {
+      "args": [
+        [
+          2200
+        ]
+      ],
+      "expected": [
+        "Diamond"
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "args": [
+        []
+      ],
+      "expected": []
+    },
+    {
+      "args": [
+        [
+          0
+        ]
+      ],
+      "expected": [
+        "Bronze"
+      ]
+    },
+    {
+      "args": [
+        [
+          999,
+          1399,
+          1400,
+          1799,
+          1800,
+          2199,
+          2200
+        ]
+      ],
+      "expected": [
+        "Bronze",
+        "Silver",
+        "Gold",
+        "Gold",
+        "Platinum",
+        "Platinum",
+        "Diamond"
+      ]
+    },
+    {
+      "args": [
+        [
+          3000,
+          1,
+          1500
+        ]
+      ],
+      "expected": [
+        "Diamond",
+        "Bronze",
+        "Gold"
+      ]
+    },
+    {
+      "args": [
+        [
+          938,
+          835,
+          2740,
+          1695,
+          909,
+          1197,
+          939,
+          272,
+          499,
+          549,
+          127,
+          1361,
+          2160,
+          437,
+          2695,
+          1932,
+          2568,
+          1583,
+          1915,
+          264,
+          2040,
+          2778,
+          369,
+          2027,
+          1163,
+          2771,
+          723,
+          2083,
+          1115,
+          469
+        ]
+      ],
+      "expected": [
+        "Bronze",
+        "Bronze",
+        "Diamond",
+        "Gold",
+        "Bronze",
+        "Silver",
+        "Bronze",
+        "Bronze",
+        "Bronze",
+        "Bronze",
+        "Bronze",
+        "Silver",
+        "Platinum",
+        "Bronze",
+        "Diamond",
+        "Platinum",
+        "Diamond",
+        "Gold",
+        "Platinum",
+        "Bronze",
+        "Platinum",
+        "Diamond",
+        "Bronze",
+        "Platinum",
+        "Silver",
+        "Diamond",
+        "Bronze",
+        "Platinum",
+        "Silver",
+        "Bronze"
+      ]
+    }
+  ]
+}

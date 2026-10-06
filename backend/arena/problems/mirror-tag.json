@@ -1,0 +1,100 @@
+{
+  "id": "mirror-tag",
+  "title": "Mirror Tag",
+  "difficulty": "easy",
+  "tags": [
+    "strings",
+    "two pointers"
+  ],
+  "description": "A gamer tag is a *mirror tag* if it reads the same forwards and backwards once you ignore case and every character that is not a letter or digit.\n\nReturn `true` if `tag` is a mirror tag. A tag with no letters or digits counts as a mirror tag.",
+  "function": {
+    "name": "isMirrorTag",
+    "pythonName": "is_mirror_tag",
+    "params": [
+      {
+        "name": "tag",
+        "type": "string"
+      }
+    ],
+    "returns": "boolean"
+  },
+  "compare": {
+    "mode": "exact"
+  },
+  "examples": [
+    {
+      "args": [
+        "Race_Car"
+      ],
+      "expected": true
+    },
+    {
+      "args": [
+        "xX_pro_Xx"
+      ],
+      "expected": false
+    },
+    {
+      "args": [
+        "arena"
+      ],
+      "expected": false
+    }
+  ],
+  "tests": [
+    {
+      "args": [
+        ""
+      ],
+      "expected": true
+    },
+    {
+      "args": [
+        "__"
+      ],
+      "expected": true
+    },
+    {
+      "args": [
+        "a"
+      ],
+      "expected": true
+    },
+    {
+      "args": [
+        "Ab1_1bA"
+      ],
+      "expected": true
+    },
+    {
+      "args": [
+        "12-21"
+      ],
+      "expected": true
+    },
+    {
+      "args": [
+        "12-31"
+      ],
+      "expected": false
+    },
+    {
+      "args": [
+        "No lemon, no melon"
+      ],
+      "expected": true
+    },
+    {
+      "args": [
+        "Step on no pets!"
+      ],
+      "expected": true
+    },
+    {
+      "args": [
+        "abcdba"
+      ],
+      "expected": false
+    }
+  ]
+}

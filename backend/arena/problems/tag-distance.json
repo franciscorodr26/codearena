@@ -1,0 +1,102 @@
+{
+  "id": "tag-distance",
+  "title": "Tag Distance",
+  "difficulty": "hard",
+  "tags": [
+    "dynamic programming",
+    "strings"
+  ],
+  "description": "To catch impersonators, CodeArena measures how far apart two gamer tags are: the minimum number of single-character insertions, deletions or replacements needed to turn `a` into `b`.\n\nReturn that number.",
+  "function": {
+    "name": "tagDistance",
+    "pythonName": "tag_distance",
+    "params": [
+      {
+        "name": "a",
+        "type": "string"
+      },
+      {
+        "name": "b",
+        "type": "string"
+      }
+    ],
+    "returns": "integer"
+  },
+  "compare": {
+    "mode": "exact"
+  },
+  "examples": [
+    {
+      "args": [
+        "ninja",
+        "ninj4"
+      ],
+      "expected": 1
+    },
+    {
+      "args": [
+        "ace",
+        "race"
+      ],
+      "expected": 1
+    }
+  ],
+  "tests": [
+    {
+      "args": [
+        "",
+        ""
+      ],
+      "expected": 0
+    },
+    {
+      "args": [
+        "",
+        "abc"
+      ],
+      "expected": 3
+    },
+    {
+      "args": [
+        "abc",
+        ""
+      ],
+      "expected": 3
+    },
+    {
+      "args": [
+        "same",
+        "same"
+      ],
+      "expected": 0
+    },
+    {
+      "args": [
+        "kitten",
+        "sitting"
+      ],
+      "expected": 3
+    },
+    {
+      "args": [
+        "xX_ace_Xx",
+        "x_ace_x"
+      ],
+      "expected": 2
+    },
+    {
+      "args": [
+        "ayy1bcy__01cx_by0cxc",
+        "_aa0zacazabx1ycc1ac_00bby"
+      ],
+      "expected": 20
+    },
+    {
+      "args": [
+        "x1ccyxyb11yc1bx1c_bxcc_xxzbbx_xa0_1cxbb0zac_cxzazb_0bx1cy1_za_0b0_0_z_0y_x_10yz01ab1bbayyaz_b_yaa1ya1x_ccyyy_001__x1a1zy0__1c0aa0_y_bxa0ab1azxzb0_axb_c0y1yz1bzc0bzac1xyyy1axb11aczxb0y01cy__x1_zba_yba_0b_ccczab1z0_zbbyx01zx11z0a0xxxyzbbyxa_yyzz_yyybxcxyc1ccxcaxyx_ccaxa0bzy__0bbayx0zbbax01c10bx1zyza_1",
+        "a0cxa_xxa_yca1ax10xz_a_bbby0aa_xy1y1ybyzbbc1xyy_0y_1zbyycb1bc0x0aa_b_z__yxyx_b1z1x1z1x1x_bbx_aya_a010bby10c_zc_zzz10zyxy0ax_cbx_zz0cy_ab1_0b1yc_y0aycbxcca1b_czcx0cb1010_x_1x__00babcaczbbc_yycaa11zc_ba1axacxb0zxyyxcxaxaczy1_0z_xb1_acyzzbz_xc00z__yc11b0y0cy_01zyax_axz1ay1bbzyy1byzx"
+      ],
+      "expected": 213
+    }
+  ]
+}

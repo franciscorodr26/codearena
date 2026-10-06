@@ -1,0 +1,99 @@
+{
+  "id": "emote-count",
+  "title": "Emote Count",
+  "difficulty": "easy",
+  "tags": [
+    "strings"
+  ],
+  "description": "A chat message is a list of words separated by single spaces. A word is an *emote* if it is a colon, then one or more lowercase letters `a` to `z`, then a colon, with nothing else. For example `:gg:` is an emote, while `:GG:`, `::`, `:go2:` and `:a:b:` are not.\n\nReturn how many words in `message` are emotes.",
+  "function": {
+    "name": "countEmotes",
+    "pythonName": "count_emotes",
+    "params": [
+      {
+        "name": "message",
+        "type": "string"
+      }
+    ],
+    "returns": "integer"
+  },
+  "compare": {
+    "mode": "exact"
+  },
+  "examples": [
+    {
+      "args": [
+        "gg :fire: wp :wave:"
+      ],
+      "expected": 2
+    },
+    {
+      "args": [
+        ":GG: ::"
+      ],
+      "expected": 0
+    }
+  ],
+  "tests": [
+    {
+      "args": [
+        ""
+      ],
+      "expected": 0
+    },
+    {
+      "args": [
+        ":a:"
+      ],
+      "expected": 1
+    },
+    {
+      "args": [
+        ":a:b:"
+      ],
+      "expected": 0
+    },
+    {
+      "args": [
+        ":lol: :lol: :lol:"
+      ],
+      "expected": 3
+    },
+    {
+      "args": [
+        ":wave: :GG: one ok one gg :gg: :pog: ok rematch? one"
+      ],
+      "expected": 3
+    },
+    {
+      "args": [
+        "ok ok wp :wave:"
+      ],
+      "expected": 1
+    },
+    {
+      "args": [
+        "one rematch? :a nice one"
+      ],
+      "expected": 0
+    },
+    {
+      "args": [
+        "rematch? nice wp :gg: one :lol: gg ok"
+      ],
+      "expected": 2
+    },
+    {
+      "args": [
+        "gg"
+      ],
+      "expected": 0
+    },
+    {
+      "args": [
+        "ok wp :fire: :wave: wp ok :wave: :gg: b:"
+      ],
+      "expected": 4
+    }
+  ]
+}

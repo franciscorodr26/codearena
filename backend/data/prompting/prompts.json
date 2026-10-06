@@ -1,0 +1,2260 @@
+[
+  {
+    "id": "pp-patch-notes",
+    "title": "Patch Notes",
+    "difficulty": "Easy",
+    "category": "communication",
+    "description": "Write a prompt that gets an AI to turn a messy list of changes into player-facing patch notes.",
+    "scenario": "Your indie studio ships a balance update to its online card game tonight. The engineers left a bullet list of 14 changes written for other engineers (ticket numbers, internal card codenames, no context). Players need patch notes they can actually read: what changed, why, and what it means for their decks.",
+    "targetOutput": "Patch notes with a short summary, grouped sections (balance, bug fixes, quality of life), one line per change in player language, and a note on anything that affects ranked play.",
+    "evaluationCriteria": [
+      {
+        "name": "Audience",
+        "weight": 25,
+        "description": "Does the prompt say who reads the notes and what they care about?"
+      },
+      {
+        "name": "Structure",
+        "weight": 20,
+        "description": "Does it ask for sections and a summary?"
+      },
+      {
+        "name": "Translation",
+        "weight": 20,
+        "description": "Does it tell the AI to replace internal names and ticket numbers with player terms?"
+      },
+      {
+        "name": "Tone",
+        "weight": 15,
+        "description": "Does it set a tone (clear, friendly, no hype)?"
+      },
+      {
+        "name": "Completeness",
+        "weight": 10,
+        "description": "Does it insist every change is covered?"
+      },
+      {
+        "name": "Clarity",
+        "weight": 10,
+        "description": "Is the prompt itself unambiguous?"
+      }
+    ],
+    "hints": [
+      "Say who the reader is and what they will do with the notes.",
+      "Ask for the changes to be grouped, with the biggest ones first.",
+      "Tell the AI what to do with internal jargon it cannot translate."
+    ],
+    "examplePrompt": "You write patch notes for an online card game. Players are competitive and hate marketing fluff. Turn the change list below into patch notes: start with a three-sentence summary, then sections for Balance, Bug fixes and Quality of life. One line per change, in plain language, with the reason in parentheses. Replace internal card codenames with the public card names from the glossary I provide. Flag anything that changes ranked play with [Ranked].",
+    "tags": [
+      "writing",
+      "games",
+      "release"
+    ],
+    "scoring": {
+      "version": 2,
+      "mode": "promptSubmitCount",
+      "maxPoints": 100,
+      "idealSubmits": 2,
+      "maxSubmitsForMinScore": 14,
+      "minScoreAtCap": 20,
+      "passThresholdPoints": 35,
+      "gradeBands": [
+        {
+          "grade": "A",
+          "minPercent": 90
+        },
+        {
+          "grade": "B",
+          "minPercent": 75
+        },
+        {
+          "grade": "C",
+          "minPercent": 60
+        },
+        {
+          "grade": "D",
+          "minPercent": 45
+        }
+      ],
+      "notes": "Score depends only on how many prompts were submitted in the session. Fewer submits (down to idealSubmits) earn more points; submitCount >= maxSubmitsForMinScore floors at minScoreAtCap."
+    },
+    "modelOutputScoring": {
+      "version": 1,
+      "mode": "tieredDeterministic",
+      "description": "After time is up, score the model reply only. Highest scorePercent where every check in tier 1..k passes.",
+      "tiers": [
+        {
+          "id": "tier-a",
+          "label": "Baseline structure",
+          "scorePercent": 60,
+          "checks": [
+            {
+              "id": "substantive-length",
+              "type": "minLength",
+              "min": 350,
+              "description": "Reply is long enough to be a real deliverable"
+            },
+            {
+              "id": "has-sectioning",
+              "type": "requireAny",
+              "needles": [
+                "\n## ",
+                "\n# ",
+                "\n1.",
+                "\n2.",
+                "\n- ",
+                "\n* ",
+                "\n\u2022 "
+              ],
+              "caseInsensitive": false,
+              "description": "Uses headings, numbering or bullets"
+            }
+          ]
+        },
+        {
+          "id": "tier-b",
+          "label": "Context",
+          "scorePercent": 70,
+          "checks": [
+            {
+              "id": "context-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "player",
+                "deck",
+                "ranked",
+                "card",
+                "match",
+                "balance",
+                "update",
+                "community"
+              ],
+              "min": 2,
+              "caseInsensitive": true,
+              "description": "At least two signals that the reply addresses the actual situation"
+            }
+          ]
+        },
+        {
+          "id": "tier-c",
+          "label": "Depth",
+          "scorePercent": 85,
+          "checks": [
+            {
+              "id": "depth-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "because",
+                "reason",
+                "why",
+                "impact",
+                "affect",
+                "now",
+                "previously",
+                "fix"
+              ],
+              "min": 2,
+              "caseInsensitive": true,
+              "description": "At least two signals of concrete, actionable depth"
+            }
+          ]
+        },
+        {
+          "id": "tier-d",
+          "label": "Rigor",
+          "scorePercent": 100,
+          "checks": [
+            {
+              "id": "rigor-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "summary",
+                "section",
+                "balance",
+                "bug",
+                "quality",
+                "ranked",
+                "glossary",
+                "known issue",
+                "version"
+              ],
+              "min": 3,
+              "caseInsensitive": true,
+              "description": "Several signals of rigor the brief asked for"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "pp-bug-triage",
+    "title": "Bug Report Triage",
+    "difficulty": "Easy",
+    "category": "engineering",
+    "description": "Write a prompt that turns a vague user complaint into a reproducible bug ticket.",
+    "scenario": "A player wrote in support chat: 'the timer is broken sometimes in battles, I lost because of it, fix your game'. You have the chat transcript, the player's browser and the battle id. You want an AI to draft a bug ticket your engineers can act on without a second round of questions.",
+    "targetOutput": "A ticket with a one-line title, environment, numbered reproduction steps (or the questions needed to get them), expected versus actual behaviour, severity with justification, and the evidence to attach.",
+    "evaluationCriteria": [
+      {
+        "name": "Structure",
+        "weight": 25,
+        "description": "Does the prompt specify the ticket sections?"
+      },
+      {
+        "name": "Evidence",
+        "weight": 20,
+        "description": "Does it tell the AI what facts it has and what is missing?"
+      },
+      {
+        "name": "Severity",
+        "weight": 15,
+        "description": "Does it ask for a severity call with reasoning?"
+      },
+      {
+        "name": "Questions",
+        "weight": 15,
+        "description": "Does it ask for follow-up questions when steps cannot be reconstructed?"
+      },
+      {
+        "name": "Neutral tone",
+        "weight": 10,
+        "description": "Does it strip blame and emotion?"
+      },
+      {
+        "name": "Clarity",
+        "weight": 15,
+        "description": "Is the prompt unambiguous?"
+      }
+    ],
+    "hints": [
+      "List the ticket fields you want, in order.",
+      "Tell the AI which facts are known and which are guesses.",
+      "Ask it to separate what the user said from what probably happened."
+    ],
+    "examplePrompt": "Draft a bug ticket from the support transcript below. Format: Title (one line), Environment (browser, OS, battle id), Steps to reproduce as a numbered list, Expected, Actual, Severity (P1-P3) with one sentence of reasoning, Attachments to request. Keep the user's words out of the title. Where the transcript does not give enough to reproduce, write the exact questions to ask the user instead of guessing.",
+    "tags": [
+      "debugging",
+      "process",
+      "support"
+    ],
+    "scoring": {
+      "version": 2,
+      "mode": "promptSubmitCount",
+      "maxPoints": 100,
+      "idealSubmits": 2,
+      "maxSubmitsForMinScore": 14,
+      "minScoreAtCap": 20,
+      "passThresholdPoints": 35,
+      "gradeBands": [
+        {
+          "grade": "A",
+          "minPercent": 90
+        },
+        {
+          "grade": "B",
+          "minPercent": 75
+        },
+        {
+          "grade": "C",
+          "minPercent": 60
+        },
+        {
+          "grade": "D",
+          "minPercent": 45
+        }
+      ],
+      "notes": "Score depends only on how many prompts were submitted in the session. Fewer submits (down to idealSubmits) earn more points; submitCount >= maxSubmitsForMinScore floors at minScoreAtCap."
+    },
+    "modelOutputScoring": {
+      "version": 1,
+      "mode": "tieredDeterministic",
+      "description": "After time is up, score the model reply only. Highest scorePercent where every check in tier 1..k passes.",
+      "tiers": [
+        {
+          "id": "tier-a",
+          "label": "Baseline structure",
+          "scorePercent": 60,
+          "checks": [
+            {
+              "id": "substantive-length",
+              "type": "minLength",
+              "min": 300,
+              "description": "Reply is long enough to be a real deliverable"
+            },
+            {
+              "id": "has-sectioning",
+              "type": "requireAny",
+              "needles": [
+                "\n## ",
+                "\n# ",
+                "\n1.",
+                "\n2.",
+                "\n- ",
+                "\n* ",
+                "\n\u2022 "
+              ],
+              "caseInsensitive": false,
+              "description": "Uses headings, numbering or bullets"
+            }
+          ]
+        },
+        {
+          "id": "tier-b",
+          "label": "Context",
+          "scorePercent": 70,
+          "checks": [
+            {
+              "id": "context-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "user",
+                "player",
+                "battle",
+                "timer",
+                "browser",
+                "transcript",
+                "support",
+                "engineer"
+              ],
+              "min": 2,
+              "caseInsensitive": true,
+              "description": "At least two signals that the reply addresses the actual situation"
+            }
+          ]
+        },
+        {
+          "id": "tier-c",
+          "label": "Depth",
+          "scorePercent": 85,
+          "checks": [
+            {
+              "id": "depth-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "step",
+                "reproduce",
+                "expected",
+                "actual",
+                "severity",
+                "environment",
+                "evidence",
+                "attach"
+              ],
+              "min": 2,
+              "caseInsensitive": true,
+              "description": "At least two signals of concrete, actionable depth"
+            }
+          ]
+        },
+        {
+          "id": "tier-d",
+          "label": "Rigor",
+          "scorePercent": 100,
+          "checks": [
+            {
+              "id": "rigor-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "title",
+                "steps",
+                "expected",
+                "actual",
+                "severity",
+                "question",
+                "log",
+                "version",
+                "screenshot"
+              ],
+              "min": 3,
+              "caseInsensitive": true,
+              "description": "Several signals of rigor the brief asked for"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "pp-welcome-email",
+    "title": "Welcome Email",
+    "difficulty": "Easy",
+    "category": "communication",
+    "description": "Write a prompt for the email a new player receives right after signing up.",
+    "scenario": "New sign-ups who do not play a battle in the first day rarely come back. You want a short welcome email that gets someone into their first match or warm-up within minutes, without sounding like marketing.",
+    "targetOutput": "An email under 150 words with a subject line, one clear next action, one secondary option, and a plain reason to come back tomorrow.",
+    "evaluationCriteria": [
+      {
+        "name": "Goal",
+        "weight": 25,
+        "description": "Does the prompt name the single action the email should drive?"
+      },
+      {
+        "name": "Length",
+        "weight": 15,
+        "description": "Does it set a word limit?"
+      },
+      {
+        "name": "Voice",
+        "weight": 20,
+        "description": "Does it describe the voice and what to avoid?"
+      },
+      {
+        "name": "Audience",
+        "weight": 15,
+        "description": "Does it say who the reader is and what they know?"
+      },
+      {
+        "name": "Structure",
+        "weight": 10,
+        "description": "Does it ask for subject line and layout?"
+      },
+      {
+        "name": "Clarity",
+        "weight": 15,
+        "description": "Is the prompt unambiguous?"
+      }
+    ],
+    "hints": [
+      "Decide what the one action is before you write the prompt.",
+      "Give the AI two or three things the voice must never do.",
+      "Set a hard length limit."
+    ],
+    "examplePrompt": "Write the welcome email for someone who just created a CodeArena account. Goal: get them into a 10-minute warm-up today. Under 150 words. Subject line plus body. Voice: a friendly senior engineer, no exclamation marks, no 'excited', no emojis. Mention exactly one next action with a link placeholder, one alternative for people who prefer solo practice, and one honest reason to return tomorrow (the daily warm-up resets). Sign off as the team.",
+    "tags": [
+      "email",
+      "onboarding",
+      "retention"
+    ],
+    "scoring": {
+      "version": 2,
+      "mode": "promptSubmitCount",
+      "maxPoints": 100,
+      "idealSubmits": 2,
+      "maxSubmitsForMinScore": 14,
+      "minScoreAtCap": 20,
+      "passThresholdPoints": 35,
+      "gradeBands": [
+        {
+          "grade": "A",
+          "minPercent": 90
+        },
+        {
+          "grade": "B",
+          "minPercent": 75
+        },
+        {
+          "grade": "C",
+          "minPercent": 60
+        },
+        {
+          "grade": "D",
+          "minPercent": 45
+        }
+      ],
+      "notes": "Score depends only on how many prompts were submitted in the session. Fewer submits (down to idealSubmits) earn more points; submitCount >= maxSubmitsForMinScore floors at minScoreAtCap."
+    },
+    "modelOutputScoring": {
+      "version": 1,
+      "mode": "tieredDeterministic",
+      "description": "After time is up, score the model reply only. Highest scorePercent where every check in tier 1..k passes.",
+      "tiers": [
+        {
+          "id": "tier-a",
+          "label": "Baseline structure",
+          "scorePercent": 60,
+          "checks": [
+            {
+              "id": "substantive-length",
+              "type": "minLength",
+              "min": 250,
+              "description": "Reply is long enough to be a real deliverable"
+            },
+            {
+              "id": "has-sectioning",
+              "type": "requireAny",
+              "needles": [
+                "\n## ",
+                "\n# ",
+                "\n1.",
+                "\n2.",
+                "\n- ",
+                "\n* ",
+                "\n\u2022 "
+              ],
+              "caseInsensitive": false,
+              "description": "Uses headings, numbering or bullets"
+            }
+          ]
+        },
+        {
+          "id": "tier-b",
+          "label": "Context",
+          "scorePercent": 70,
+          "checks": [
+            {
+              "id": "context-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "welcome",
+                "sign",
+                "account",
+                "first",
+                "player",
+                "practice",
+                "battle",
+                "warm"
+              ],
+              "min": 2,
+              "caseInsensitive": true,
+              "description": "At least two signals that the reply addresses the actual situation"
+            }
+          ]
+        },
+        {
+          "id": "tier-c",
+          "label": "Depth",
+          "scorePercent": 85,
+          "checks": [
+            {
+              "id": "depth-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "today",
+                "minute",
+                "link",
+                "next",
+                "start",
+                "tomorrow",
+                "daily",
+                "try"
+              ],
+              "min": 2,
+              "caseInsensitive": true,
+              "description": "At least two signals of concrete, actionable depth"
+            }
+          ]
+        },
+        {
+          "id": "tier-d",
+          "label": "Rigor",
+          "scorePercent": 100,
+          "checks": [
+            {
+              "id": "rigor-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "subject",
+                "action",
+                "alternative",
+                "tomorrow",
+                "team",
+                "reason",
+                "short",
+                "link"
+              ],
+              "min": 3,
+              "caseInsensitive": true,
+              "description": "Several signals of rigor the brief asked for"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "pp-tournament-rules",
+    "title": "Tournament Rules Page",
+    "difficulty": "Easy",
+    "category": "product",
+    "description": "Write a prompt that produces the rules page for a 16-player single-elimination tournament.",
+    "scenario": "Your community runs a weekend tournament: 16 players, single elimination, 20-minute coding matches, check-in required before the bracket locks. Disputes keep happening because the rules live in a chat thread. You want a rules page people can point to.",
+    "targetOutput": "A rules page with eligibility, schedule and check-in, match format, tie-breaks, disconnects, conduct, disputes and how decisions are made, written so a first-time entrant understands it.",
+    "evaluationCriteria": [
+      {
+        "name": "Coverage",
+        "weight": 25,
+        "description": "Does the prompt list every area the rules must cover?"
+      },
+      {
+        "name": "Edge cases",
+        "weight": 20,
+        "description": "Does it name the messy cases (no-shows, disconnects, ties)?"
+      },
+      {
+        "name": "Audience",
+        "weight": 15,
+        "description": "Does it set the reader and reading level?"
+      },
+      {
+        "name": "Authority",
+        "weight": 15,
+        "description": "Does it say who decides disputes?"
+      },
+      {
+        "name": "Format",
+        "weight": 10,
+        "description": "Does it ask for a scannable structure?"
+      },
+      {
+        "name": "Clarity",
+        "weight": 15,
+        "description": "Is the prompt unambiguous?"
+      }
+    ],
+    "hints": [
+      "Write down the disputes you have actually had; those are your sections.",
+      "Ask for the hard cases explicitly, not just 'be thorough'.",
+      "Say who has the final word."
+    ],
+    "examplePrompt": "Write the rules page for our weekend tournament. Facts: 16 players, single elimination, 20-minute matches, check-in closes 10 minutes before round one, winner is the first to pass all tests, if nobody passes the player with more tests passed wins, equal tests passed goes to the faster last submission. Sections: Eligibility, Schedule and check-in, Match format, Tie-breaks, Disconnects and no-shows, Conduct, Disputes. Plain language for someone who has never entered a tournament. The organizer's decision on disputes is final; say so.",
+    "tags": [
+      "games",
+      "rules",
+      "writing"
+    ],
+    "scoring": {
+      "version": 2,
+      "mode": "promptSubmitCount",
+      "maxPoints": 100,
+      "idealSubmits": 2,
+      "maxSubmitsForMinScore": 14,
+      "minScoreAtCap": 20,
+      "passThresholdPoints": 35,
+      "gradeBands": [
+        {
+          "grade": "A",
+          "minPercent": 90
+        },
+        {
+          "grade": "B",
+          "minPercent": 75
+        },
+        {
+          "grade": "C",
+          "minPercent": 60
+        },
+        {
+          "grade": "D",
+          "minPercent": 45
+        }
+      ],
+      "notes": "Score depends only on how many prompts were submitted in the session. Fewer submits (down to idealSubmits) earn more points; submitCount >= maxSubmitsForMinScore floors at minScoreAtCap."
+    },
+    "modelOutputScoring": {
+      "version": 1,
+      "mode": "tieredDeterministic",
+      "description": "After time is up, score the model reply only. Highest scorePercent where every check in tier 1..k passes.",
+      "tiers": [
+        {
+          "id": "tier-a",
+          "label": "Baseline structure",
+          "scorePercent": 60,
+          "checks": [
+            {
+              "id": "substantive-length",
+              "type": "minLength",
+              "min": 350,
+              "description": "Reply is long enough to be a real deliverable"
+            },
+            {
+              "id": "has-sectioning",
+              "type": "requireAny",
+              "needles": [
+                "\n## ",
+                "\n# ",
+                "\n1.",
+                "\n2.",
+                "\n- ",
+                "\n* ",
+                "\n\u2022 "
+              ],
+              "caseInsensitive": false,
+              "description": "Uses headings, numbering or bullets"
+            }
+          ]
+        },
+        {
+          "id": "tier-b",
+          "label": "Context",
+          "scorePercent": 70,
+          "checks": [
+            {
+              "id": "context-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "player",
+                "tournament",
+                "match",
+                "bracket",
+                "round",
+                "check-in",
+                "organizer",
+                "entrant"
+              ],
+              "min": 2,
+              "caseInsensitive": true,
+              "description": "At least two signals that the reply addresses the actual situation"
+            }
+          ]
+        },
+        {
+          "id": "tier-c",
+          "label": "Depth",
+          "scorePercent": 85,
+          "checks": [
+            {
+              "id": "depth-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "tie",
+                "disconnect",
+                "no-show",
+                "dispute",
+                "forfeit",
+                "minute",
+                "deadline",
+                "final"
+              ],
+              "min": 2,
+              "caseInsensitive": true,
+              "description": "At least two signals of concrete, actionable depth"
+            }
+          ]
+        },
+        {
+          "id": "tier-d",
+          "label": "Rigor",
+          "scorePercent": 100,
+          "checks": [
+            {
+              "id": "rigor-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "eligib",
+                "schedule",
+                "format",
+                "tie-break",
+                "conduct",
+                "dispute",
+                "decision",
+                "round",
+                "check-in"
+              ],
+              "min": 3,
+              "caseInsensitive": true,
+              "description": "Several signals of rigor the brief asked for"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "pp-api-reference",
+    "title": "Leaderboard API Reference",
+    "difficulty": "Medium",
+    "category": "engineering",
+    "description": "Write a prompt that produces reference documentation for one HTTP endpoint from its handler code.",
+    "scenario": "You are adding a public endpoint, GET /api/leaderboard, that returns ranked players with pagination and an optional season filter. The handler is written and tested. Nobody wants to write the docs. You want an AI to produce accurate reference docs from the code, and to say what it could not infer rather than invent it.",
+    "targetOutput": "Reference documentation with the request (method, path, query parameters with types, defaults and limits), the response schema with an example, error responses, rate limits, and a section listing anything not determinable from the code.",
+    "evaluationCriteria": [
+      {
+        "name": "Accuracy guard",
+        "weight": 25,
+        "description": "Does the prompt forbid inventing behaviour not in the code?"
+      },
+      {
+        "name": "Structure",
+        "weight": 20,
+        "description": "Does it specify the sections of a reference page?"
+      },
+      {
+        "name": "Examples",
+        "weight": 15,
+        "description": "Does it ask for a realistic example request and response?"
+      },
+      {
+        "name": "Errors",
+        "weight": 15,
+        "description": "Does it ask for error cases and status codes?"
+      },
+      {
+        "name": "Audience",
+        "weight": 10,
+        "description": "Does it say who uses the docs?"
+      },
+      {
+        "name": "Clarity",
+        "weight": 15,
+        "description": "Is the prompt unambiguous?"
+      }
+    ],
+    "hints": [
+      "Tell the AI to separate what it knows from the code from what it is guessing.",
+      "Ask for every query parameter with type, default and valid range.",
+      "Ask for at least one error example with its status code."
+    ],
+    "examplePrompt": "Document GET /api/leaderboard for external developers, using only the handler code below. Sections: Summary, Request (method, path, query parameters as a table with type, required, default, limits), Response (JSON schema and a realistic example), Errors (status code, when it happens, example body), Rate limits, Unknowns. Do not describe behaviour that is not in the code; put anything you would need to confirm under Unknowns as a question.",
+    "tags": [
+      "api",
+      "documentation",
+      "backend"
+    ],
+    "scoring": {
+      "version": 2,
+      "mode": "promptSubmitCount",
+      "maxPoints": 100,
+      "idealSubmits": 2,
+      "maxSubmitsForMinScore": 14,
+      "minScoreAtCap": 20,
+      "passThresholdPoints": 35,
+      "gradeBands": [
+        {
+          "grade": "A",
+          "minPercent": 90
+        },
+        {
+          "grade": "B",
+          "minPercent": 75
+        },
+        {
+          "grade": "C",
+          "minPercent": 60
+        },
+        {
+          "grade": "D",
+          "minPercent": 45
+        }
+      ],
+      "notes": "Score depends only on how many prompts were submitted in the session. Fewer submits (down to idealSubmits) earn more points; submitCount >= maxSubmitsForMinScore floors at minScoreAtCap."
+    },
+    "modelOutputScoring": {
+      "version": 1,
+      "mode": "tieredDeterministic",
+      "description": "After time is up, score the model reply only. Highest scorePercent where every check in tier 1..k passes.",
+      "tiers": [
+        {
+          "id": "tier-a",
+          "label": "Baseline structure",
+          "scorePercent": 60,
+          "checks": [
+            {
+              "id": "substantive-length",
+              "type": "minLength",
+              "min": 450,
+              "description": "Reply is long enough to be a real deliverable"
+            },
+            {
+              "id": "has-sectioning",
+              "type": "requireAny",
+              "needles": [
+                "\n## ",
+                "\n# ",
+                "\n1.",
+                "\n2.",
+                "\n- ",
+                "\n* ",
+                "\n\u2022 "
+              ],
+              "caseInsensitive": false,
+              "description": "Uses headings, numbering or bullets"
+            }
+          ]
+        },
+        {
+          "id": "tier-b",
+          "label": "Context",
+          "scorePercent": 70,
+          "checks": [
+            {
+              "id": "context-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "developer",
+                "client",
+                "endpoint",
+                "request",
+                "response",
+                "parameter",
+                "leaderboard",
+                "season"
+              ],
+              "min": 2,
+              "caseInsensitive": true,
+              "description": "At least two signals that the reply addresses the actual situation"
+            }
+          ]
+        },
+        {
+          "id": "tier-c",
+          "label": "Depth",
+          "scorePercent": 85,
+          "checks": [
+            {
+              "id": "depth-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "default",
+                "required",
+                "type",
+                "limit",
+                "status",
+                "example",
+                "schema",
+                "page"
+              ],
+              "min": 2,
+              "caseInsensitive": true,
+              "description": "At least two signals of concrete, actionable depth"
+            }
+          ]
+        },
+        {
+          "id": "tier-d",
+          "label": "Rigor",
+          "scorePercent": 100,
+          "checks": [
+            {
+              "id": "rigor-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "200",
+                "400",
+                "404",
+                "429",
+                "unknown",
+                "confirm",
+                "table",
+                "json",
+                "rate"
+              ],
+              "min": 3,
+              "caseInsensitive": true,
+              "description": "Several signals of rigor the brief asked for"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "pp-review-checklist",
+    "title": "Code Review Checklist",
+    "difficulty": "Medium",
+    "category": "engineering",
+    "description": "Write a prompt that produces a review checklist tailored to one specific pull request.",
+    "scenario": "A teammate opened a pull request that adds rating-based matchmaking: a queue, a pairing loop that runs every two seconds, and a database table for queue entries. Generic checklists ('is the code readable?') do not help. You want a checklist specific to the risks of this change.",
+    "targetOutput": "A checklist grouped by risk area (correctness, concurrency, data, performance, failure modes, tests), each item phrased as a question a reviewer can answer yes or no, with the two or three items most likely to find a real bug marked.",
+    "evaluationCriteria": [
+      {
+        "name": "Specificity",
+        "weight": 30,
+        "description": "Does the prompt feed the AI the actual change and ask for change-specific items?"
+      },
+      {
+        "name": "Risk framing",
+        "weight": 20,
+        "description": "Does it name the risk areas that matter for a matchmaking loop?"
+      },
+      {
+        "name": "Format",
+        "weight": 15,
+        "description": "Does it ask for yes/no questions grouped by area?"
+      },
+      {
+        "name": "Prioritisation",
+        "weight": 15,
+        "description": "Does it ask which items matter most?"
+      },
+      {
+        "name": "Scope",
+        "weight": 10,
+        "description": "Does it exclude generic style items?"
+      },
+      {
+        "name": "Clarity",
+        "weight": 10,
+        "description": "Is the prompt unambiguous?"
+      }
+    ],
+    "hints": [
+      "Describe what the change does and how it runs, not just its title.",
+      "Name the failure you are most afraid of.",
+      "Ask for yes/no questions, not advice."
+    ],
+    "examplePrompt": "Produce a review checklist for the pull request described below: it adds a matchmaking queue table, a pairing loop that runs every 2 seconds on one server process, and socket events for match found/declined. Group items under Correctness, Concurrency, Data, Performance, Failure modes, Tests. Every item is a yes/no question a reviewer can check in the diff. Mark the three items most likely to catch a real bug with [key]. Skip generic style items.",
+    "tags": [
+      "code review",
+      "process",
+      "quality"
+    ],
+    "scoring": {
+      "version": 2,
+      "mode": "promptSubmitCount",
+      "maxPoints": 100,
+      "idealSubmits": 2,
+      "maxSubmitsForMinScore": 14,
+      "minScoreAtCap": 20,
+      "passThresholdPoints": 35,
+      "gradeBands": [
+        {
+          "grade": "A",
+          "minPercent": 90
+        },
+        {
+          "grade": "B",
+          "minPercent": 75
+        },
+        {
+          "grade": "C",
+          "minPercent": 60
+        },
+        {
+          "grade": "D",
+          "minPercent": 45
+        }
+      ],
+      "notes": "Score depends only on how many prompts were submitted in the session. Fewer submits (down to idealSubmits) earn more points; submitCount >= maxSubmitsForMinScore floors at minScoreAtCap."
+    },
+    "modelOutputScoring": {
+      "version": 1,
+      "mode": "tieredDeterministic",
+      "description": "After time is up, score the model reply only. Highest scorePercent where every check in tier 1..k passes.",
+      "tiers": [
+        {
+          "id": "tier-a",
+          "label": "Baseline structure",
+          "scorePercent": 60,
+          "checks": [
+            {
+              "id": "substantive-length",
+              "type": "minLength",
+              "min": 450,
+              "description": "Reply is long enough to be a real deliverable"
+            },
+            {
+              "id": "has-sectioning",
+              "type": "requireAny",
+              "needles": [
+                "\n## ",
+                "\n# ",
+                "\n1.",
+                "\n2.",
+                "\n- ",
+                "\n* ",
+                "\n\u2022 "
+              ],
+              "caseInsensitive": false,
+              "description": "Uses headings, numbering or bullets"
+            }
+          ]
+        },
+        {
+          "id": "tier-b",
+          "label": "Context",
+          "scorePercent": 70,
+          "checks": [
+            {
+              "id": "context-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "queue",
+                "match",
+                "pair",
+                "player",
+                "rating",
+                "socket",
+                "server",
+                "table"
+              ],
+              "min": 2,
+              "caseInsensitive": true,
+              "description": "At least two signals that the reply addresses the actual situation"
+            }
+          ]
+        },
+        {
+          "id": "tier-c",
+          "label": "Depth",
+          "scorePercent": 85,
+          "checks": [
+            {
+              "id": "depth-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "race",
+                "lock",
+                "duplicate",
+                "retry",
+                "timeout",
+                "index",
+                "transaction",
+                "idempot"
+              ],
+              "min": 2,
+              "caseInsensitive": true,
+              "description": "At least two signals of concrete, actionable depth"
+            }
+          ]
+        },
+        {
+          "id": "tier-d",
+          "label": "Rigor",
+          "scorePercent": 100,
+          "checks": [
+            {
+              "id": "rigor-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "correct",
+                "concurren",
+                "data",
+                "performance",
+                "failure",
+                "test",
+                "key",
+                "yes",
+                "no"
+              ],
+              "min": 3,
+              "caseInsensitive": true,
+              "description": "Several signals of rigor the brief asked for"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "pp-explain-recursion",
+    "title": "Explain Recursion",
+    "difficulty": "Medium",
+    "category": "teaching",
+    "description": "Write a prompt that explains recursion to a beginner and checks they understood.",
+    "scenario": "A friend who has written loops for two weeks asks what recursion is. Previous explanations ('a function that calls itself') did not land. You want an explanation built on something they already know, followed by two tiny exercises with answers hidden until the end.",
+    "targetOutput": "An explanation that starts from loops, uses one concrete analogy and one short code example, names the base case and the recursive step explicitly, then gives two exercises with solutions at the end.",
+    "evaluationCriteria": [
+      {
+        "name": "Starting point",
+        "weight": 25,
+        "description": "Does the prompt state what the learner already knows?"
+      },
+      {
+        "name": "Structure",
+        "weight": 20,
+        "description": "Does it ask for analogy, example, base case and step?"
+      },
+      {
+        "name": "Checks",
+        "weight": 20,
+        "description": "Does it ask for exercises and where the answers go?"
+      },
+      {
+        "name": "Length",
+        "weight": 10,
+        "description": "Does it bound the length?"
+      },
+      {
+        "name": "Language",
+        "weight": 10,
+        "description": "Does it choose the programming language?"
+      },
+      {
+        "name": "Clarity",
+        "weight": 15,
+        "description": "Is the prompt unambiguous?"
+      }
+    ],
+    "hints": [
+      "State what the learner can already do, so the AI builds on it.",
+      "Ask for the two parts of every recursive function by name.",
+      "Ask for exercises small enough to do in the chat."
+    ],
+    "examplePrompt": "Explain recursion to someone who has written Python for two weeks and is comfortable with for-loops but has never seen a function call itself. Start by rewriting one loop they understand (summing a list) as a recursive function, show both side by side, name the base case and the recursive step. One everyday analogy, no more. Under 350 words plus code. Then give two exercises (reverse a string, count down from n) and put both solutions at the very end under a 'Solutions' heading.",
+    "tags": [
+      "teaching",
+      "beginners",
+      "concepts"
+    ],
+    "scoring": {
+      "version": 2,
+      "mode": "promptSubmitCount",
+      "maxPoints": 100,
+      "idealSubmits": 2,
+      "maxSubmitsForMinScore": 14,
+      "minScoreAtCap": 20,
+      "passThresholdPoints": 35,
+      "gradeBands": [
+        {
+          "grade": "A",
+          "minPercent": 90
+        },
+        {
+          "grade": "B",
+          "minPercent": 75
+        },
+        {
+          "grade": "C",
+          "minPercent": 60
+        },
+        {
+          "grade": "D",
+          "minPercent": 45
+        }
+      ],
+      "notes": "Score depends only on how many prompts were submitted in the session. Fewer submits (down to idealSubmits) earn more points; submitCount >= maxSubmitsForMinScore floors at minScoreAtCap."
+    },
+    "modelOutputScoring": {
+      "version": 1,
+      "mode": "tieredDeterministic",
+      "description": "After time is up, score the model reply only. Highest scorePercent where every check in tier 1..k passes.",
+      "tiers": [
+        {
+          "id": "tier-a",
+          "label": "Baseline structure",
+          "scorePercent": 60,
+          "checks": [
+            {
+              "id": "substantive-length",
+              "type": "minLength",
+              "min": 400,
+              "description": "Reply is long enough to be a real deliverable"
+            },
+            {
+              "id": "has-sectioning",
+              "type": "requireAny",
+              "needles": [
+                "\n## ",
+                "\n# ",
+                "\n1.",
+                "\n2.",
+                "\n- ",
+                "\n* ",
+                "\n\u2022 "
+              ],
+              "caseInsensitive": false,
+              "description": "Uses headings, numbering or bullets"
+            }
+          ]
+        },
+        {
+          "id": "tier-b",
+          "label": "Context",
+          "scorePercent": 70,
+          "checks": [
+            {
+              "id": "context-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "loop",
+                "for",
+                "function",
+                "python",
+                "beginner",
+                "list",
+                "call",
+                "you"
+              ],
+              "min": 2,
+              "caseInsensitive": true,
+              "description": "At least two signals that the reply addresses the actual situation"
+            }
+          ]
+        },
+        {
+          "id": "tier-c",
+          "label": "Depth",
+          "scorePercent": 85,
+          "checks": [
+            {
+              "id": "depth-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "base case",
+                "recursive",
+                "step",
+                "example",
+                "analogy",
+                "stack",
+                "return",
+                "smaller"
+              ],
+              "min": 2,
+              "caseInsensitive": true,
+              "description": "At least two signals of concrete, actionable depth"
+            }
+          ]
+        },
+        {
+          "id": "tier-d",
+          "label": "Rigor",
+          "scorePercent": 100,
+          "checks": [
+            {
+              "id": "rigor-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "exercise",
+                "solution",
+                "reverse",
+                "count",
+                "base case",
+                "recursive step",
+                "loop",
+                "heading"
+              ],
+              "min": 3,
+              "caseInsensitive": true,
+              "description": "Several signals of rigor the brief asked for"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "pp-study-plan",
+    "title": "Four-Week Study Plan",
+    "difficulty": "Medium",
+    "category": "learning",
+    "description": "Write a prompt for a realistic four-week plan to get from zero to solving easy problems in Python.",
+    "scenario": "You have 45 minutes a day on weekdays and nothing on weekends. You know spreadsheets, not programming. In four weeks you want to solve easy CodeArena problems unaided. Most plans you find assume four hours a day.",
+    "targetOutput": "A week-by-week plan that fits 45 minutes a day, with daily tasks, one checkpoint per week with a pass criterion, and a rule for what to do when a day is missed.",
+    "evaluationCriteria": [
+      {
+        "name": "Constraints",
+        "weight": 30,
+        "description": "Does the prompt state the time budget and starting point precisely?"
+      },
+      {
+        "name": "Measurable goal",
+        "weight": 20,
+        "description": "Does it define what 'done' means at week four?"
+      },
+      {
+        "name": "Checkpoints",
+        "weight": 15,
+        "description": "Does it ask for weekly checks with criteria?"
+      },
+      {
+        "name": "Slippage",
+        "weight": 15,
+        "description": "Does it ask how to handle missed days?"
+      },
+      {
+        "name": "Format",
+        "weight": 10,
+        "description": "Does it ask for a scannable layout?"
+      },
+      {
+        "name": "Clarity",
+        "weight": 10,
+        "description": "Is the prompt unambiguous?"
+      }
+    ],
+    "hints": [
+      "Give exact numbers for time and the exact end state.",
+      "Ask what to drop first when a week goes badly.",
+      "Ask for a way to know you are on track each week."
+    ],
+    "examplePrompt": "Make a four-week Python plan for me. Constraints: 45 minutes per weekday, no weekends, I know spreadsheet formulas but have never programmed. Goal on day 20: solve three easy problems (loops, strings, lists) without hints in under 30 minutes each. Format: a table per week with one row per day (topic, task, done-when), one checkpoint at the end of each week with a pass criterion, and a short rule for what to cut if I miss two days. No videos longer than 15 minutes.",
+    "tags": [
+      "learning",
+      "planning",
+      "python"
+    ],
+    "scoring": {
+      "version": 2,
+      "mode": "promptSubmitCount",
+      "maxPoints": 100,
+      "idealSubmits": 2,
+      "maxSubmitsForMinScore": 14,
+      "minScoreAtCap": 20,
+      "passThresholdPoints": 35,
+      "gradeBands": [
+        {
+          "grade": "A",
+          "minPercent": 90
+        },
+        {
+          "grade": "B",
+          "minPercent": 75
+        },
+        {
+          "grade": "C",
+          "minPercent": 60
+        },
+        {
+          "grade": "D",
+          "minPercent": 45
+        }
+      ],
+      "notes": "Score depends only on how many prompts were submitted in the session. Fewer submits (down to idealSubmits) earn more points; submitCount >= maxSubmitsForMinScore floors at minScoreAtCap."
+    },
+    "modelOutputScoring": {
+      "version": 1,
+      "mode": "tieredDeterministic",
+      "description": "After time is up, score the model reply only. Highest scorePercent where every check in tier 1..k passes.",
+      "tiers": [
+        {
+          "id": "tier-a",
+          "label": "Baseline structure",
+          "scorePercent": 60,
+          "checks": [
+            {
+              "id": "substantive-length",
+              "type": "minLength",
+              "min": 450,
+              "description": "Reply is long enough to be a real deliverable"
+            },
+            {
+              "id": "has-sectioning",
+              "type": "requireAny",
+              "needles": [
+                "\n## ",
+                "\n# ",
+                "\n1.",
+                "\n2.",
+                "\n- ",
+                "\n* ",
+                "\n\u2022 "
+              ],
+              "caseInsensitive": false,
+              "description": "Uses headings, numbering or bullets"
+            }
+          ]
+        },
+        {
+          "id": "tier-b",
+          "label": "Context",
+          "scorePercent": 70,
+          "checks": [
+            {
+              "id": "context-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "week",
+                "day",
+                "minute",
+                "python",
+                "beginner",
+                "problem",
+                "practice",
+                "goal"
+              ],
+              "min": 2,
+              "caseInsensitive": true,
+              "description": "At least two signals that the reply addresses the actual situation"
+            }
+          ]
+        },
+        {
+          "id": "tier-c",
+          "label": "Depth",
+          "scorePercent": 85,
+          "checks": [
+            {
+              "id": "depth-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "checkpoint",
+                "criteria",
+                "task",
+                "topic",
+                "done",
+                "review",
+                "missed",
+                "cut"
+              ],
+              "min": 2,
+              "caseInsensitive": true,
+              "description": "At least two signals of concrete, actionable depth"
+            }
+          ]
+        },
+        {
+          "id": "tier-d",
+          "label": "Rigor",
+          "scorePercent": 100,
+          "checks": [
+            {
+              "id": "rigor-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "week 1",
+                "week 2",
+                "week 3",
+                "week 4",
+                "checkpoint",
+                "pass",
+                "miss",
+                "table",
+                "list",
+                "string",
+                "loop"
+              ],
+              "min": 4,
+              "caseInsensitive": true,
+              "description": "Several signals of rigor the brief asked for"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "pp-postmortem",
+    "title": "Incident Postmortem",
+    "difficulty": "Hard",
+    "category": "operations",
+    "description": "Write a prompt that drafts a blameless postmortem from a raw incident timeline.",
+    "scenario": "The code runner was down for 41 minutes on a Saturday; 212 battle submissions failed and were correctly not scored, but players saw a generic error. You have the chat log, the deploy history and three graphs. You want a postmortem the team will actually learn from, not a blame list.",
+    "targetOutput": "A postmortem with summary, impact in numbers, timeline, root cause and contributing factors, what went well, what went badly, and action items with an owner and a due date each, written blamelessly.",
+    "evaluationCriteria": [
+      {
+        "name": "Blameless framing",
+        "weight": 25,
+        "description": "Does the prompt require systems language instead of naming people?"
+      },
+      {
+        "name": "Structure",
+        "weight": 20,
+        "description": "Does it specify the postmortem sections?"
+      },
+      {
+        "name": "Evidence",
+        "weight": 20,
+        "description": "Does it supply the facts and forbid filling gaps?"
+      },
+      {
+        "name": "Actions",
+        "weight": 20,
+        "description": "Does it require owners and dates on action items?"
+      },
+      {
+        "name": "Impact",
+        "weight": 5,
+        "description": "Does it ask for impact in numbers?"
+      },
+      {
+        "name": "Clarity",
+        "weight": 10,
+        "description": "Is the prompt unambiguous?"
+      }
+    ],
+    "hints": [
+      "Say explicitly that the document must not name individuals as causes.",
+      "Ask for action items that can be verified as done.",
+      "Separate root cause from contributing factors."
+    ],
+    "examplePrompt": "Draft a blameless postmortem from the timeline below. Sections: Summary (3 sentences), Impact (numbers only), Timeline (UTC, from first alert to recovery), Root cause, Contributing factors, What went well, What went badly, Action items (each with owner role, due date, and how we will know it is done). Describe causes as system and process gaps; never attribute the incident to a person. Where the timeline has a gap, write 'unknown' and add a question under a final Open questions section.",
+    "tags": [
+      "incidents",
+      "reliability",
+      "writing"
+    ],
+    "scoring": {
+      "version": 2,
+      "mode": "promptSubmitCount",
+      "maxPoints": 100,
+      "idealSubmits": 2,
+      "maxSubmitsForMinScore": 14,
+      "minScoreAtCap": 20,
+      "passThresholdPoints": 35,
+      "gradeBands": [
+        {
+          "grade": "A",
+          "minPercent": 90
+        },
+        {
+          "grade": "B",
+          "minPercent": 75
+        },
+        {
+          "grade": "C",
+          "minPercent": 60
+        },
+        {
+          "grade": "D",
+          "minPercent": 45
+        }
+      ],
+      "notes": "Score depends only on how many prompts were submitted in the session. Fewer submits (down to idealSubmits) earn more points; submitCount >= maxSubmitsForMinScore floors at minScoreAtCap."
+    },
+    "modelOutputScoring": {
+      "version": 1,
+      "mode": "tieredDeterministic",
+      "description": "After time is up, score the model reply only. Highest scorePercent where every check in tier 1..k passes.",
+      "tiers": [
+        {
+          "id": "tier-a",
+          "label": "Baseline structure",
+          "scorePercent": 60,
+          "checks": [
+            {
+              "id": "substantive-length",
+              "type": "minLength",
+              "min": 550,
+              "description": "Reply is long enough to be a real deliverable"
+            },
+            {
+              "id": "has-sectioning",
+              "type": "requireAny",
+              "needles": [
+                "\n## ",
+                "\n# ",
+                "\n1.",
+                "\n2.",
+                "\n- ",
+                "\n* ",
+                "\n\u2022 "
+              ],
+              "caseInsensitive": false,
+              "description": "Uses headings, numbering or bullets"
+            }
+          ]
+        },
+        {
+          "id": "tier-b",
+          "label": "Context",
+          "scorePercent": 70,
+          "checks": [
+            {
+              "id": "context-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "runner",
+                "submission",
+                "player",
+                "alert",
+                "deploy",
+                "saturday",
+                "minute",
+                "battle"
+              ],
+              "min": 2,
+              "caseInsensitive": true,
+              "description": "At least two signals that the reply addresses the actual situation"
+            }
+          ]
+        },
+        {
+          "id": "tier-c",
+          "label": "Depth",
+          "scorePercent": 85,
+          "checks": [
+            {
+              "id": "depth-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "root cause",
+                "contributing",
+                "timeline",
+                "utc",
+                "recovery",
+                "detect",
+                "mitigat",
+                "monitor"
+              ],
+              "min": 2,
+              "caseInsensitive": true,
+              "description": "At least two signals of concrete, actionable depth"
+            }
+          ]
+        },
+        {
+          "id": "tier-d",
+          "label": "Rigor",
+          "scorePercent": 100,
+          "checks": [
+            {
+              "id": "rigor-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "summary",
+                "impact",
+                "timeline",
+                "root cause",
+                "contributing",
+                "went well",
+                "went badly",
+                "action",
+                "owner",
+                "due",
+                "open question"
+              ],
+              "min": 4,
+              "caseInsensitive": true,
+              "description": "Several signals of rigor the brief asked for"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "pp-accessibility-audit",
+    "title": "Accessibility Audit",
+    "difficulty": "Hard",
+    "category": "design",
+    "description": "Write a prompt that audits a signup form for accessibility from its HTML and produces fixes.",
+    "scenario": "A player using a screen reader could not finish signing up. You paste the form's HTML and the CSS that hides the labels. You want a prioritised list of problems with the exact fix for each, referencing the standard, and a way to verify each fix without special tools where possible.",
+    "targetOutput": "An audit listing each issue with severity, who it blocks, the WCAG criterion, the exact code change, and a manual verification step; ordered by severity; plus a short note on anything that cannot be judged from HTML alone.",
+    "evaluationCriteria": [
+      {
+        "name": "Scope",
+        "weight": 20,
+        "description": "Does the prompt say exactly what is being audited and what is out of scope?"
+      },
+      {
+        "name": "Standard",
+        "weight": 20,
+        "description": "Does it anchor findings to WCAG criteria?"
+      },
+      {
+        "name": "Fixes",
+        "weight": 25,
+        "description": "Does it require concrete code changes, not advice?"
+      },
+      {
+        "name": "Verification",
+        "weight": 15,
+        "description": "Does it ask how to check each fix?"
+      },
+      {
+        "name": "Priority",
+        "weight": 10,
+        "description": "Does it ask for ordering by impact?"
+      },
+      {
+        "name": "Clarity",
+        "weight": 10,
+        "description": "Is the prompt unambiguous?"
+      }
+    ],
+    "hints": [
+      "Ask for the fix as code, not as a recommendation.",
+      "Ask which users each issue blocks.",
+      "Ask for what cannot be known from the markup."
+    ],
+    "examplePrompt": "Audit the signup form HTML and CSS below for accessibility. For each issue: severity (blocker, major, minor), who it affects (screen reader, keyboard only, low vision, cognitive), the WCAG 2.2 criterion number, the exact replacement markup or CSS, and a manual check (keyboard or screen reader step) to confirm the fix. Order by severity. End with 'Not determinable from code' listing anything that needs a real browser test (focus order with scripts, colour contrast of images).",
+    "tags": [
+      "accessibility",
+      "frontend",
+      "forms"
+    ],
+    "scoring": {
+      "version": 2,
+      "mode": "promptSubmitCount",
+      "maxPoints": 100,
+      "idealSubmits": 2,
+      "maxSubmitsForMinScore": 14,
+      "minScoreAtCap": 20,
+      "passThresholdPoints": 35,
+      "gradeBands": [
+        {
+          "grade": "A",
+          "minPercent": 90
+        },
+        {
+          "grade": "B",
+          "minPercent": 75
+        },
+        {
+          "grade": "C",
+          "minPercent": 60
+        },
+        {
+          "grade": "D",
+          "minPercent": 45
+        }
+      ],
+      "notes": "Score depends only on how many prompts were submitted in the session. Fewer submits (down to idealSubmits) earn more points; submitCount >= maxSubmitsForMinScore floors at minScoreAtCap."
+    },
+    "modelOutputScoring": {
+      "version": 1,
+      "mode": "tieredDeterministic",
+      "description": "After time is up, score the model reply only. Highest scorePercent where every check in tier 1..k passes.",
+      "tiers": [
+        {
+          "id": "tier-a",
+          "label": "Baseline structure",
+          "scorePercent": 60,
+          "checks": [
+            {
+              "id": "substantive-length",
+              "type": "minLength",
+              "min": 500,
+              "description": "Reply is long enough to be a real deliverable"
+            },
+            {
+              "id": "has-sectioning",
+              "type": "requireAny",
+              "needles": [
+                "\n## ",
+                "\n# ",
+                "\n1.",
+                "\n2.",
+                "\n- ",
+                "\n* ",
+                "\n\u2022 "
+              ],
+              "caseInsensitive": false,
+              "description": "Uses headings, numbering or bullets"
+            }
+          ]
+        },
+        {
+          "id": "tier-b",
+          "label": "Context",
+          "scorePercent": 70,
+          "checks": [
+            {
+              "id": "context-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "screen reader",
+                "keyboard",
+                "label",
+                "focus",
+                "form",
+                "user",
+                "input",
+                "contrast"
+              ],
+              "min": 2,
+              "caseInsensitive": true,
+              "description": "At least two signals that the reply addresses the actual situation"
+            }
+          ]
+        },
+        {
+          "id": "tier-c",
+          "label": "Depth",
+          "scorePercent": 85,
+          "checks": [
+            {
+              "id": "depth-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "wcag",
+                "criterion",
+                "aria",
+                "role",
+                "tab",
+                "announce",
+                "error",
+                "required"
+              ],
+              "min": 2,
+              "caseInsensitive": true,
+              "description": "At least two signals of concrete, actionable depth"
+            }
+          ]
+        },
+        {
+          "id": "tier-d",
+          "label": "Rigor",
+          "scorePercent": 100,
+          "checks": [
+            {
+              "id": "rigor-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "blocker",
+                "major",
+                "minor",
+                "fix",
+                "verify",
+                "check",
+                "order",
+                "not determinable",
+                "criterion"
+              ],
+              "min": 4,
+              "caseInsensitive": true,
+              "description": "Several signals of rigor the brief asked for"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "pp-scope-cut",
+    "title": "Scope Cut Message",
+    "difficulty": "Hard",
+    "category": "product",
+    "description": "Write a prompt for a message that proposes cutting scope without losing the stakeholder's trust.",
+    "scenario": "The community team was promised team tournaments by the end of the month. With a week left, the bracket and check-in work but team chat and shared scoreboards are not close. You want to propose shipping brackets now and the rest in three weeks, in a message that is honest, short, and gives the stakeholder a real choice.",
+    "targetOutput": "A message under 200 words with the situation in two sentences, two options with what each costs, a recommendation, what the stakeholder needs to decide and by when, and no apology spiral.",
+    "evaluationCriteria": [
+      {
+        "name": "Honesty",
+        "weight": 25,
+        "description": "Does the prompt require the real status, including what is not done?"
+      },
+      {
+        "name": "Options",
+        "weight": 25,
+        "description": "Does it ask for genuine alternatives with costs?"
+      },
+      {
+        "name": "Decision ask",
+        "weight": 20,
+        "description": "Does it ask for a clear decision and deadline?"
+      },
+      {
+        "name": "Tone",
+        "weight": 15,
+        "description": "Does it set a confident, non-apologetic tone?"
+      },
+      {
+        "name": "Length",
+        "weight": 5,
+        "description": "Does it bound the length?"
+      },
+      {
+        "name": "Clarity",
+        "weight": 10,
+        "description": "Is the prompt unambiguous?"
+      }
+    ],
+    "hints": [
+      "Give the AI the true state of each piece, done or not.",
+      "Ask for two options the stakeholder can actually pick between.",
+      "Ban the words you do not want (sorry, unfortunately)."
+    ],
+    "examplePrompt": "Write a message to the community lead proposing a scope cut. Facts: brackets and check-in are done and tested; team chat is 40% done; shared scoreboards not started; deadline is in 7 days. Option A: ship brackets now, chat and scoreboards in 3 weeks. Option B: wait 3 weeks and ship everything. Under 200 words. Structure: situation (2 sentences), the two options with what each means for the launch event, my recommendation (A) and why, the decision I need and by when (Wednesday). Confident and direct; do not use 'sorry', 'unfortunately' or 'I know this is not ideal'.",
+    "tags": [
+      "communication",
+      "planning",
+      "stakeholders"
+    ],
+    "scoring": {
+      "version": 2,
+      "mode": "promptSubmitCount",
+      "maxPoints": 100,
+      "idealSubmits": 2,
+      "maxSubmitsForMinScore": 14,
+      "minScoreAtCap": 20,
+      "passThresholdPoints": 35,
+      "gradeBands": [
+        {
+          "grade": "A",
+          "minPercent": 90
+        },
+        {
+          "grade": "B",
+          "minPercent": 75
+        },
+        {
+          "grade": "C",
+          "minPercent": 60
+        },
+        {
+          "grade": "D",
+          "minPercent": 45
+        }
+      ],
+      "notes": "Score depends only on how many prompts were submitted in the session. Fewer submits (down to idealSubmits) earn more points; submitCount >= maxSubmitsForMinScore floors at minScoreAtCap."
+    },
+    "modelOutputScoring": {
+      "version": 1,
+      "mode": "tieredDeterministic",
+      "description": "After time is up, score the model reply only. Highest scorePercent where every check in tier 1..k passes.",
+      "tiers": [
+        {
+          "id": "tier-a",
+          "label": "Baseline structure",
+          "scorePercent": 60,
+          "checks": [
+            {
+              "id": "substantive-length",
+              "type": "minLength",
+              "min": 300,
+              "description": "Reply is long enough to be a real deliverable"
+            },
+            {
+              "id": "has-sectioning",
+              "type": "requireAny",
+              "needles": [
+                "\n## ",
+                "\n# ",
+                "\n1.",
+                "\n2.",
+                "\n- ",
+                "\n* ",
+                "\n\u2022 "
+              ],
+              "caseInsensitive": false,
+              "description": "Uses headings, numbering or bullets"
+            }
+          ]
+        },
+        {
+          "id": "tier-b",
+          "label": "Context",
+          "scorePercent": 70,
+          "checks": [
+            {
+              "id": "context-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "team",
+                "tournament",
+                "launch",
+                "deadline",
+                "stakeholder",
+                "community",
+                "bracket",
+                "week"
+              ],
+              "min": 2,
+              "caseInsensitive": true,
+              "description": "At least two signals that the reply addresses the actual situation"
+            }
+          ]
+        },
+        {
+          "id": "tier-c",
+          "label": "Depth",
+          "scorePercent": 85,
+          "checks": [
+            {
+              "id": "depth-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "option a",
+                "option b",
+                "recommend",
+                "decide",
+                "by wednesday",
+                "cost",
+                "risk",
+                "trade"
+              ],
+              "min": 2,
+              "caseInsensitive": true,
+              "description": "At least two signals of concrete, actionable depth"
+            }
+          ]
+        },
+        {
+          "id": "tier-d",
+          "label": "Rigor",
+          "scorePercent": 100,
+          "checks": [
+            {
+              "id": "rigor-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "situation",
+                "option",
+                "recommend",
+                "decision",
+                "deadline",
+                "done",
+                "not started",
+                "week"
+              ],
+              "min": 4,
+              "caseInsensitive": true,
+              "description": "Several signals of rigor the brief asked for"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "pp-test-plan",
+    "title": "Rating Change Test Plan",
+    "difficulty": "Hard",
+    "category": "engineering",
+    "description": "Write a prompt that produces a test plan for a change to the rating formula.",
+    "scenario": "You are changing how ratings update after a battle: a new K-factor curve for new players and a floor so nobody drops below 800. Rating bugs are the fastest way to lose trust. You want a test plan that covers the formula, the edge cases, migration of existing players, and how to roll back.",
+    "targetOutput": "A test plan with unit cases (inputs and expected outputs for the formula), property checks (zero-sum, bounds), edge cases, a migration verification step on a copy of production data, a staged rollout with the metric that triggers rollback, and what is explicitly not covered.",
+    "evaluationCriteria": [
+      {
+        "name": "Coverage",
+        "weight": 25,
+        "description": "Does the prompt name every layer: formula, properties, edges, migration, rollout?"
+      },
+      {
+        "name": "Concreteness",
+        "weight": 25,
+        "description": "Does it demand actual input/expected pairs?"
+      },
+      {
+        "name": "Properties",
+        "weight": 15,
+        "description": "Does it ask for invariants like zero-sum and bounds?"
+      },
+      {
+        "name": "Rollout",
+        "weight": 15,
+        "description": "Does it ask for a rollback trigger?"
+      },
+      {
+        "name": "Honesty",
+        "weight": 10,
+        "description": "Does it ask what is not covered?"
+      },
+      {
+        "name": "Clarity",
+        "weight": 10,
+        "description": "Is the prompt unambiguous?"
+      }
+    ],
+    "hints": [
+      "Ask for numbers in the test cases, not descriptions.",
+      "Name the invariants the formula must keep.",
+      "Ask what metric would make you roll back."
+    ],
+    "examplePrompt": "Write the test plan for the rating change described below (new K-factor curve for players under 30 games, rating floor of 800, otherwise standard ELO). Sections: Unit cases (a table of winner rating, loser rating, games played, expected deltas, at least 8 rows including the floor), Properties (zero-sum except at the floor, bounds, monotonic in rating gap), Edge cases (first game, bot opponent, forfeit, tie), Migration check (run old and new formula over a copy of the last 10,000 battles and report the distribution of differences), Rollout (percentage stages and the metric that triggers rollback), Not covered. Use real numbers everywhere.",
+    "tags": [
+      "testing",
+      "quality",
+      "ratings"
+    ],
+    "scoring": {
+      "version": 2,
+      "mode": "promptSubmitCount",
+      "maxPoints": 100,
+      "idealSubmits": 2,
+      "maxSubmitsForMinScore": 14,
+      "minScoreAtCap": 20,
+      "passThresholdPoints": 35,
+      "gradeBands": [
+        {
+          "grade": "A",
+          "minPercent": 90
+        },
+        {
+          "grade": "B",
+          "minPercent": 75
+        },
+        {
+          "grade": "C",
+          "minPercent": 60
+        },
+        {
+          "grade": "D",
+          "minPercent": 45
+        }
+      ],
+      "notes": "Score depends only on how many prompts were submitted in the session. Fewer submits (down to idealSubmits) earn more points; submitCount >= maxSubmitsForMinScore floors at minScoreAtCap."
+    },
+    "modelOutputScoring": {
+      "version": 1,
+      "mode": "tieredDeterministic",
+      "description": "After time is up, score the model reply only. Highest scorePercent where every check in tier 1..k passes.",
+      "tiers": [
+        {
+          "id": "tier-a",
+          "label": "Baseline structure",
+          "scorePercent": 60,
+          "checks": [
+            {
+              "id": "substantive-length",
+              "type": "minLength",
+              "min": 550,
+              "description": "Reply is long enough to be a real deliverable"
+            },
+            {
+              "id": "has-sectioning",
+              "type": "requireAny",
+              "needles": [
+                "\n## ",
+                "\n# ",
+                "\n1.",
+                "\n2.",
+                "\n- ",
+                "\n* ",
+                "\n\u2022 "
+              ],
+              "caseInsensitive": false,
+              "description": "Uses headings, numbering or bullets"
+            }
+          ]
+        },
+        {
+          "id": "tier-b",
+          "label": "Context",
+          "scorePercent": 70,
+          "checks": [
+            {
+              "id": "context-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "rating",
+                "player",
+                "battle",
+                "winner",
+                "loser",
+                "k-factor",
+                "floor",
+                "elo"
+              ],
+              "min": 2,
+              "caseInsensitive": true,
+              "description": "At least two signals that the reply addresses the actual situation"
+            }
+          ]
+        },
+        {
+          "id": "tier-c",
+          "label": "Depth",
+          "scorePercent": 85,
+          "checks": [
+            {
+              "id": "depth-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "expected",
+                "delta",
+                "input",
+                "table",
+                "invariant",
+                "zero-sum",
+                "bound",
+                "distribution"
+              ],
+              "min": 2,
+              "caseInsensitive": true,
+              "description": "At least two signals of concrete, actionable depth"
+            }
+          ]
+        },
+        {
+          "id": "tier-d",
+          "label": "Rigor",
+          "scorePercent": 100,
+          "checks": [
+            {
+              "id": "rigor-signals",
+              "type": "requireMinCount",
+              "needles": [
+                "unit",
+                "propert",
+                "edge",
+                "migration",
+                "rollout",
+                "rollback",
+                "not covered",
+                "floor",
+                "tie",
+                "forfeit"
+              ],
+              "min": 4,
+              "caseInsensitive": true,
+              "description": "Several signals of rigor the brief asked for"
+            }
+          ]
+        }
+      ]
+    }
+  }
+]

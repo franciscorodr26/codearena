@@ -1,0 +1,72 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  boundary:
+    name: Publish boundary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/check-boundary.js
+
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      NODE_ENV: test
+      JWT_SECRET: ci-only-jwt-secret-not-used-anywhere-real
+      DB_PATH: /tmp/codearena-ci.sqlite
+      CODEARENA_RUNNER: local
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - name: Module load smoke
+        run: node --check server.js
+      - name: Problem set validates with both reference solutions
+        run: npm run validate:problems
+      - name: Boot and health probe
+        run: |
+          PORT=3101 FRONTEND_URL=http://localhost:3000 node server.js > /tmp/boot.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3101/health > /dev/null 2>&1; then echo "healthy after ${i} tries"; exit 0; fi
+            sleep 0.5
+          done
+          echo "server did not become healthy"; cat /tmp/boot.log; exit 1
+      - run: npx jest --ci --silent
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npx jest --ci --silent
+      - run: npx next build
+        env:
+          NEXT_PUBLIC_BACKEND_URL: http://127.0.0.1:3001

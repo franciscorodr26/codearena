@@ -1,0 +1,136 @@
+{
+  "id": "shop-change",
+  "title": "Shop Change",
+  "difficulty": "medium",
+  "tags": [
+    "dynamic programming"
+  ],
+  "description": "The in-game shop pays out change using tokens whose values are listed in `tokens` (you have an unlimited number of each). Return the smallest number of tokens that add up to exactly `amount`, or `-1` if it cannot be done. An amount of `0` needs `0` tokens.",
+  "function": {
+    "name": "fewestTokens",
+    "pythonName": "fewest_tokens",
+    "params": [
+      {
+        "name": "tokens",
+        "type": "integer[]"
+      },
+      {
+        "name": "amount",
+        "type": "integer"
+      }
+    ],
+    "returns": "integer"
+  },
+  "compare": {
+    "mode": "exact"
+  },
+  "examples": [
+    {
+      "args": [
+        [
+          1,
+          5,
+          12
+        ],
+        15
+      ],
+      "expected": 3
+    },
+    {
+      "args": [
+        [
+          4,
+          6
+        ],
+        7
+      ],
+      "expected": -1
+    }
+  ],
+  "tests": [
+    {
+      "args": [
+        [
+          3
+        ],
+        0
+      ],
+      "expected": 0
+    },
+    {
+      "args": [
+        [
+          2
+        ],
+        3
+      ],
+      "expected": -1
+    },
+    {
+      "args": [
+        [
+          7
+        ],
+        49
+      ],
+      "expected": 7
+    },
+    {
+      "args": [
+        [
+          1,
+          3,
+          4
+        ],
+        6
+      ],
+      "expected": 2
+    },
+    {
+      "args": [
+        [
+          5,
+          10,
+          25
+        ],
+        30
+      ],
+      "expected": 2
+    },
+    {
+      "args": [
+        [
+          3,
+          7,
+          11
+        ],
+        1000
+      ],
+      "expected": 92
+    },
+    {
+      "args": [
+        [
+          9,
+          6,
+          5,
+          1
+        ],
+        11
+      ],
+      "expected": 2
+    },
+    {
+      "args": [
+        [
+          186,
+          419,
+          83,
+          408
+        ],
+        6249
+      ],
+      "expected": 20
+    }
+  ]
+}
