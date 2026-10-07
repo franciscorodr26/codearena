@@ -1165,7 +1165,8 @@ const ChartSkeleton = memo(function ChartSkeleton() {
             animate={{ scaleY: 1 }}
             transition={{ delay: i * 0.05 }}
             className="flex-1 bg-surface-700/50 rounded-t"
-            style={{ height: `${30 + Math.random() * 60}%`, transformOrigin: 'bottom' }}
+            // Fixed heights: random ones differ between server and browser render.
+            style={{ height: `${30 + ((i * 37) % 60)}%`, transformOrigin: 'bottom' }}
           />
         ))}
       </div>

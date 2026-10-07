@@ -6198,6 +6198,7 @@ app.post('/track', async (req, res) => {
       // Friend events
       'friend-request-sent',
       'friend-request-accepted',
+      'view-messages',
       'friend-request-declined',
       'friend-removed',
       // Subscription/Payment events
