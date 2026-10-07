@@ -10,7 +10,7 @@ import {
   RefreshCw, AlertCircle, Sparkles, Users, ArrowUp,
   ArrowDown, Timer, Rocket, Heart, Menu, X,
   ChevronLeft, PartyPopper, Bot, Lightbulb, LogOut,
-  MessageSquare, Wand2, Gamepad2
+  MessageSquare, Wand2, Gamepad2, ChevronDown
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import SearchBar from '../components/SearchBar';
@@ -28,6 +28,7 @@ import Logo from '../components/Logo';
 import { config } from '../config/env';
 import { fetchWithTimeout, AUTH_ERROR_EVENT } from '../utils/fetch';
 import { withRetry } from '../utils/errorHandling';
+import { normalizeRating, rankProgress } from '../utils/dashboardRating';
 
 const API = config.backend_url;
 
@@ -256,15 +257,13 @@ function getNextRankTier(rating) {
   return null;
 }
 
-// Time-based greeting with personality
-function getGreeting(username) {
+// Keep the greeting separate from the display name so long names fit once.
+function getGreeting() {
   const hour = new Date().getHours();
-  const name = username || 'Coder';
-  if (hour < 6) return `Burning the midnight oil, ${name}?`;
-  if (hour < 12) return `Good morning, ${name}`;
-  if (hour < 17) return `Good afternoon, ${name}`;
-  if (hour < 21) return `Good evening, ${name}`;
-  return `Late night coding, ${name}?`;
+  if (hour < 6) return 'Good to see you';
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
 }
 
 // Motivational messages based on performance
@@ -857,102 +856,6 @@ const StatCard = memo(function StatCard({ icon: Icon, label, value, subValue, co
   );
 });
 
-// Quick Play Card - Featured game mode
-const QuickPlayCard = memo(function QuickPlayCard({
-  icon: Icon,
-  title,
-  description,
-  onClick,
-  color = 'primary',
-  featured = false,
-  recommended = false,
-  badge,
-  delay = 0
-}) {
-  const iconColors = {
-    primary: 'text-primary-400',
-    green: 'text-green-400',
-    cyan: 'text-cyan-400',
-    purple: 'text-purple-400',
-    amber: 'text-amber-400',
-    rose: 'text-rose-400'
-  };
-
-  const iconColor = iconColors[color] || iconColors.primary;
-
-  return (
-    <motion.button
-      onClick={onClick}
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay, duration: 0.2 }}
-      whileHover={{ backgroundColor: 'rgba(255,255,255,0.05)' }}
-      whileTap={{ scale: 0.98 }}
-      className={`relative snap-start shrink-0 w-[80%] sm:w-auto sm:flex-1 p-4 rounded-xl text-left border transition-colors ${
-        recommended
-          ? 'border-primary-500/40 bg-primary-500/[0.06] shadow-[0_0_12px_-4px_rgba(99,179,175,0.25)]'
-          : 'border-surface-700/50 bg-surface-800/40 hover:bg-surface-800 active:bg-surface-700'
-      }`}
-    >
-      {recommended && (
-        <span className="absolute -top-2 left-3 px-1.5 py-0.5 bg-primary-500/20 text-primary-300 text-[9px] font-semibold uppercase tracking-wider rounded-full border border-primary-500/30">
-          Recommended
-        </span>
-      )}
-      <div className="flex items-center gap-3 mb-1.5">
-        <Icon className={`w-5 h-5 ${iconColor}`} />
-        <h3 className="text-sm font-medium text-white">{title}</h3>
-        {badge && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-700/50 text-surface-400">
-            {badge}
-          </span>
-        )}
-      </div>
-      <p className="text-xs text-surface-500 pl-8">{description}</p>
-    </motion.button>
-  );
-});
-
-// Quick Play Section - Prominent game modes at top
-// Get personalized recommendation based on user stats
-function getPersonalizedRecommendation(stats, lastBattleTime) {
-  const totalGames = (stats?.wins || 0) + (stats?.losses || 0);
-  const winRate = stats?.winRate || 0;
-  const rating = stats?.rating || 1000;
-  const currentStreak = stats?.currentStreak || 0;
-
-  // New user recommendations
-  if (totalGames === 0) {
-    return { text: "New here? Start with Practice vs Bot to warm up!", highlight: 'bot-battle' };
-  }
-  if (totalGames < 5) {
-    return { text: "Getting started! Try a few more bot matches before ranked.", highlight: 'bot-battle' };
-  }
-
-  // Streak-based recommendations
-  if (currentStreak >= 3) {
-    return { text: `🔥 ${currentStreak} win streak! Keep the momentum in Quick Match!`, highlight: 'quick-match' };
-  }
-  if (currentStreak <= -3) {
-    return { text: "Rough patch? Practice mode can help you refocus.", highlight: 'practice' };
-  }
-
-  // Performance-based recommendations
-  if (winRate < 40 && totalGames >= 10) {
-    return { text: "Pro tip: Bot battles help improve without ELO pressure.", highlight: 'bot-battle' };
-  }
-  if (winRate >= 60) {
-    return { text: "You're crushing it! Ready for ranked matches.", highlight: 'quick-match' };
-  }
-
-  // Time-based recommendations
-  if (lastBattleTime) {
-    return { text: `Last battle: ${lastBattleTime}. Ready for another?`, highlight: null };
-  }
-
-  return { text: "Quick Match uses ELO matchmaking for fair opponents.", highlight: null };
-}
-
 // Check for last practice session in localStorage
 function useLastPracticeSession() {
   const [lastSession, setLastSession] = useState(null);
@@ -976,94 +879,70 @@ function useLastPracticeSession() {
   return lastSession;
 }
 
-const QuickPlaySection = memo(function QuickPlaySection({ router, lastBattleTime, stats }) {
+const QuickPlaySection = memo(function QuickPlaySection() {
   const lastPracticeSession = useLastPracticeSession();
-  const recommendation = useMemo(
-    () => getPersonalizedRecommendation(stats, lastBattleTime),
-    [stats, lastBattleTime]
-  );
-
-  const gameModes = [
+  const modes = [
     {
-      id: 'practice',
-      title: 'Solo Practice',
-      description: lastPracticeSession?.problemName
-        ? `Continue: ${lastPracticeSession.problemName}`
-        : 'Build skill, no pressure',
-      icon: Target,
-      color: 'cyan',
-      route: lastPracticeSession?.problemSlug
-        ? `/practice?problem=${lastPracticeSession.problemSlug}`
-        : '/practice',
-      featured: true,
-      badge: lastPracticeSession ? 'Resume' : null
+      title: 'Code practice', icon: Code, color: 'text-cyan-300 bg-cyan-400/10',
+      description: lastPracticeSession?.problemName ? `Continue ${lastPracticeSession.problemName}` : 'Solve a problem at your own pace.',
+      href: lastPracticeSession?.problemSlug ? `/practice?problem=${encodeURIComponent(lastPracticeSession.problemSlug)}` : '/practice',
+      resume: Boolean(lastPracticeSession?.problemSlug),
     },
-    {
-      id: 'quick-match',
-      title: 'Quick Match',
-      description: 'Find an opponent instantly',
-      icon: Swords,
-      color: 'green',
-      route: '/matchmaking'
-    }
+    { title: 'Prompt practice', icon: MessageSquare, color: 'text-amber-300 bg-amber-400/10', description: 'Try a prompt. Learn what works.', href: '/prompt-practice' },
+    { title: 'Quick Match', icon: Swords, color: 'text-emerald-300 bg-emerald-400/10', description: 'Meet someone through a live battle.', href: '/matchmaking' },
+    { title: 'Play with friends', icon: Users, color: 'text-violet-300 bg-violet-400/10', description: 'Invite a friend to a private battle.', href: '/battle' },
   ];
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: -10 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="mb-6 md:mb-8"
-    >
-      {/* Section Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <motion.div
-            animate={{ rotate: [0, 10, -10, 0] }}
-            transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
-          >
-            <Zap className="w-5 h-5 text-yellow-400" />
-          </motion.div>
-          <h2 className="text-lg md:text-xl font-bold text-white">Quick Play</h2>
-        </div>
-        <Link
-          href="/modes"
-          className="text-xs md:text-sm text-surface-400 hover:text-primary-400 transition-colors flex items-center gap-1"
-        >
+    <section aria-labelledby="quick-play-heading" className="min-w-0">
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <h2 id="quick-play-heading" className="text-lg font-semibold text-white">What will you try today?</h2>
+        <Link href="/modes" className="shrink-0 text-xs text-surface-300 hover:text-white inline-flex items-center gap-1 rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-400">
           All modes <ChevronRight className="w-4 h-4" />
         </Link>
       </div>
-
-      {/* Game Mode Cards */}
-      <div className="flex gap-3 md:gap-4 overflow-x-auto overflow-y-visible pt-3 pb-2 scrollbar-hide snap-x snap-mandatory -mx-1 px-1">
-        {gameModes.map((mode, index) => (
-          <QuickPlayCard
-            key={mode.id}
-            icon={mode.icon}
-            title={mode.title}
-            description={mode.description}
-            color={mode.color}
-            onClick={() => router.push(mode.route)}
-            featured={mode.featured}
-            recommended={mode.recommended}
-            badge={mode.badge}
-            delay={index * 0.05}
-          />
+      <div className="grid sm:grid-cols-2 gap-3">
+        {modes.map(({ title, icon: Icon, color, description, href, resume }) => (
+          <Link key={title} href={href} className="group min-w-0 flex items-start gap-3 rounded-xl border border-surface-700/60 bg-surface-900/70 p-4 transition-colors hover:border-primary-400/50 hover:bg-surface-800/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-400">
+            <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${color}`}><Icon className="h-5 w-5" /></span>
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center gap-2 text-sm font-semibold text-white">{title}{resume && <span className="text-[10px] font-medium text-primary-300">Resume</span>}</span>
+              <span className="mt-1 block text-xs leading-5 text-surface-300 break-words line-clamp-2">{description}</span>
+            </span>
+            <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-surface-500 group-hover:text-primary-300" />
+          </Link>
         ))}
       </div>
+    </section>
+  );
+});
 
-      {/* Personalized tip / recommendation */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.3 }}
-        className="mt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
-      >
-        <div className="flex items-center gap-2 text-xs text-surface-500">
-          <Sparkles className="w-3.5 h-3.5 text-yellow-500/70 flex-shrink-0" />
-          <span>{recommendation.text}</span>
-        </div>
-      </motion.div>
-    </motion.div>
+const RecentActivity = memo(function RecentActivity({ activities, promptScoreHistory }) {
+  return (
+    <section aria-labelledby="recent-activity-heading" className="mb-6 rounded-2xl border border-surface-700/50 bg-surface-900/60 p-4 sm:p-5">
+      <h2 id="recent-activity-heading" className="mb-3 flex items-center gap-2 text-sm font-semibold text-white"><Activity className="h-4 w-4 text-primary-300" />Recent activity</h2>
+      {activities.length ? (
+        <ul aria-label="Recent sessions" className="max-h-64 overflow-y-auto divide-y divide-surface-700/50">
+          {activities.map((activity, i) => {
+            const type = ACTIVITY_TYPE_CONFIG[activity.type] || ACTIVITY_TYPE_CONFIG.solo_practice;
+            const Icon = { Swords, Bot, Code, MessageSquare, Gamepad2, Zap }[type.icon] || Activity;
+            const scores = activity.type === 'prompt_practice' && activity.metadata?.challenge_id ? promptScoreHistory[activity.metadata.challenge_id] : null;
+            const result = { win: 'Won', loss: 'Lost', draw: 'Draw', solved: 'Solved' }[activity.result];
+            return (
+              <li key={activity.id || i} className="flex items-center gap-3 py-3 text-xs">
+                <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${type.bgColor}`}><Icon className={`h-4 w-4 ${type.color}`} /></span>
+                <div className="min-w-0 flex-1"><p className="truncate text-sm text-surface-200" title={activity.title}>{activity.title}</p><p className="mt-0.5 text-surface-400">{type.label}{result ? ` · ${result}` : ''}</p></div>
+                {scores && <span className="hidden sm:block"><MiniSparkline scores={scores} /></span>}
+                {activity.score != null && <span className="shrink-0 font-medium tabular-nums text-amber-300">{activity.score}%</span>}
+                <time dateTime={activity.timestamp} className="shrink-0 tabular-nums text-surface-400">{formatRelativeTime(activity.timestamp)}</time>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="text-sm leading-6 text-surface-400">Your coding sessions, prompt practice and battles will appear here.</p>
+      )}
+    </section>
   );
 });
 
@@ -1378,7 +1257,7 @@ export default function Dashboard() {
       }
 
       // Check for rank up
-      const currentRating = progressData.progress?.stats?.rating || 1000;
+      const currentRating = normalizeRating(progressData.progress?.stats?.rating);
       const currentRankIndex = getRankIndex(currentRating);
       const storedRankIndex = parseInt(sessionStorage.getItem('lastRankIndex') || '-1', 10);
 
@@ -1455,14 +1334,14 @@ export default function Dashboard() {
 
   // Computed values
   const stats = useMemo(() => dashboardData?.stats || {}, [dashboardData]);
-  const rankTier = useMemo(() => getRankTier(stats.rating || 1000), [stats.rating]);
-  const nextRank = useMemo(() => getNextRankTier(stats.rating || 1000), [stats.rating]);
+  const rating = normalizeRating(stats.rating);
+  const rankTier = useMemo(() => getRankTier(rating), [rating]);
+  const nextRank = useMemo(() => getNextRankTier(rating), [rating]);
   const motivationalMessage = useMemo(() => getMotivationalMessage(stats), [stats]);
 
   const progressToNextRank = useMemo(() => {
-    if (!nextRank) return 100;
-    return Math.min(100, ((stats.rating - rankTier.min) / (rankTier.max - rankTier.min + 1)) * 100);
-  }, [stats.rating, rankTier, nextRank]);
+    return rankProgress(rating, rankTier.min, nextRank?.min);
+  }, [rating, rankTier, nextRank]);
 
   const recentActivity = useMemo(() => dashboardData?.recentActivity || [], [dashboardData]);
   const promptScoreHistory = useMemo(() => dashboardData?.promptScoreHistory || {}, [dashboardData]);
@@ -1737,7 +1616,7 @@ export default function Dashboard() {
                 >
                   <span className="text-surface-400 text-base md:text-lg font-medium leading-none">Elo</span>
                   <span className="-mt-1 dashboard-elo-value text-5xl md:text-6xl font-black leading-none" style={getRankTextStyle(rankTier)}>
-                    <CountUp end={stats.rating || 1000} duration={1.5} />
+                    <CountUp end={rating} duration={1.5} />
                   </span>
                 </motion.div>
 
@@ -1819,7 +1698,7 @@ export default function Dashboard() {
                       animate={{ opacity: 1 }}
                       transition={{ delay: 1.5 }}
                     >
-                      <span className="text-white font-bold">{nextRank.min - (stats.rating || 1000)}</span> points to <span className={rankTier.textColor}>{nextRank.name}</span>
+                      <span className="text-white font-bold">{nextRank.min - (rating)}</span> points to <span className={rankTier.textColor}>{nextRank.name}</span>
                     </motion.div>
                   </motion.div>
                 )}
@@ -1884,6 +1763,7 @@ export default function Dashboard() {
                   <span className="text-lg font-bold">Menu</span>
                   <button
                     onClick={() => setMobileMenuOpen(false)}
+                    aria-label="Close menu"
                     className="p-2 hover:bg-surface-800 rounded-lg transition-colors"
                   >
                     <X className="w-5 h-5" />
@@ -2007,7 +1887,7 @@ export default function Dashboard() {
                 </Link>
               </nav>
             </div>
-            <div className="flex items-center gap-3 xl:gap-4 flex-1 min-w-0">
+            <div className="ml-auto flex items-center justify-end gap-2 xl:gap-3 xl:flex-1 min-w-0">
               {/* Search & Notifications */}
               <div className="hidden xl:flex items-center gap-3 2xl:gap-4 flex-1 ml-3">
                 <div className="flex-1 max-w-sm">
@@ -2070,6 +1950,7 @@ export default function Dashboard() {
               {/* Mobile menu button */}
               <motion.button
                 onClick={() => setMobileMenuOpen(true)}
+                aria-label="Open menu"
                 className="p-2 text-surface-400 hover:text-white hover:bg-surface-800 rounded-xl transition-colors lg:hidden"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
@@ -2089,237 +1970,52 @@ export default function Dashboard() {
         </header>
 
         <main className="relative z-10 px-4 md:px-6 pt-6 pb-24 md:py-8 max-w-7xl mx-auto">
-          {/* Quick Play Section - Primary CTA */}
-          <QuickPlaySection router={router} lastBattleTime={lastBattleTime} stats={stats} />
+          <section aria-label="Your profile" className="mb-7 flex min-w-0 items-center gap-3 sm:gap-4">
+            <div className="h-12 w-12 sm:h-14 sm:w-14 shrink-0 overflow-hidden rounded-xl border border-surface-700">
+              <AvatarDisplay avatar={user?.avatar} avatarUrl={user?.avatar_url} user={user} size="lg" rounded="xl" fill />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="mb-1 text-sm text-surface-400">{getGreeting()}</p>
+              <h1 className="break-words text-2xl font-bold leading-tight tracking-tight text-white sm:text-3xl [overflow-wrap:anywhere]">{user?.username || 'Coder'}</h1>
+            </div>
+            <Link href="/friends" className="hidden sm:inline-flex shrink-0 items-center gap-2 rounded-lg border border-surface-700 px-3 py-2 text-sm text-surface-300 hover:border-primary-400/50 hover:text-white">
+              <Users className="h-4 w-4" />Find your people
+            </Link>
+          </section>
 
-          {/* Hero Section - Mobile optimized */}
-          <FadeIn className="mb-6 md:mb-8">
-            <TiltCard tiltAmount={3} glareEnabled={false}>
-              <Card className="p-5 md:p-8 bg-gradient-to-br from-surface-800/90 via-surface-850/90 to-surface-900/90 border-surface-700/50 overflow-hidden relative">
-                {/* Animated background elements */}
-                <div className="absolute top-0 right-0 w-48 md:w-96 h-48 md:h-96 bg-gradient-to-br from-primary-500/10 via-secondary-500/5 to-transparent rounded-full blur-3xl" />
-                <div className="absolute bottom-0 left-0 w-32 md:w-64 h-32 md:h-64 bg-gradient-to-tr from-secondary-500/10 to-transparent rounded-full blur-3xl" />
-
-                <div className="relative z-10">
-                  {/* Recent Activity: top right corner */}
-                  <motion.div
-                    className="hidden lg:block absolute top-0 right-0 left-[400px]"
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.5 }}
-                  >
-                    <div className="bg-surface-700/40 border border-surface-600/30 rounded-lg px-4 py-3.5 max-h-[200px] flex flex-col">
-                      <div className="flex items-center gap-1.5 mb-2.5">
-                        <Activity className="w-3.5 h-3.5 text-surface-400" />
-                        <span className="text-xs font-semibold text-surface-400 uppercase tracking-wider">Recent Activity</span>
-                      </div>
-                      <div className="space-y-1.5 overflow-y-auto flex-1 min-h-0 scrollbar-thin">
-                        {recentActivity.length > 0 ? (
-                          recentActivity.map((activity, i) => {
-                            const config = ACTIVITY_TYPE_CONFIG[activity.type] || ACTIVITY_TYPE_CONFIG.solo_practice;
-                            const IconComponent = {
-                              Swords, Bot, Code, MessageSquare, Gamepad2, Zap
-                            }[config.icon] || Activity;
-                            const promptScores = activity.type === 'prompt_practice' && activity.metadata?.challenge_id
-                              ? promptScoreHistory[activity.metadata.challenge_id]
-                              : null;
-                            return (
-                              <div key={i} className="flex items-center gap-2 text-[11px] py-0.5">
-                                <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 ${config.bgColor}`}>
-                                  <IconComponent className={`w-3 h-3 ${config.color}`} />
-                                </div>
-                                <span className="text-surface-300 truncate flex-1 min-w-0">{activity.title}</span>
-                                {promptScores && <MiniSparkline scores={promptScores} color="#f59e0b" />}
-                                {activity.result && !promptScores && (
-                                  <span className={`font-medium flex-shrink-0 ${
-                                    activity.result === 'win' || activity.result === 'solved' ? 'text-green-400' :
-                                    activity.result === 'loss' ? 'text-red-400' :
-                                    activity.result === 'draw' ? 'text-surface-400' : 'text-surface-400'
-                                  }`}>
-                                    {activity.result === 'win' ? 'W' : activity.result === 'loss' ? 'L' :
-                                     activity.result === 'draw' ? 'D' : activity.result === 'solved' ? '✓' : '-'}
-                                  </span>
-                                )}
-                                {activity.score != null && (
-                                  <span className="text-amber-400 font-medium flex-shrink-0">{activity.score}%</span>
-                                )}
-                                <span className="text-surface-500 flex-shrink-0 ml-1">{formatRelativeTime(activity.timestamp)}</span>
-                              </div>
-                            );
-                          })
-                        ) : (
-                          <div className="flex flex-col items-center justify-center py-6 text-center">
-                            <Swords className="w-7 h-7 text-surface-600 mb-2" />
-                            <span className="text-xs text-surface-500">No activity yet</span>
-                            <span className="text-[10px] text-surface-600 mt-0.5">Play your first match!</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </motion.div>
-
-                  <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 md:gap-8">
-                    {/* Profile & Rating */}
-                    <div className="flex flex-col gap-4 md:gap-5 w-full">
-                      {/* Avatar + Greeting row */}
-                      <div className="flex items-center gap-4 md:gap-5">
-                        {/* Avatar with rank badge */}
-                        <div className="relative flex-shrink-0">
-                          <motion.div
-                            className="w-[72px] h-[72px] md:w-24 md:h-24 rounded-2xl overflow-hidden border-2 border-surface-600 shadow-xl"
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                          >
-                            <AvatarDisplay
-                              avatar={user?.avatar}
-                              avatarUrl={user?.avatar_url}
-                              user={user}
-                              size="3xl"
-                              rounded="2xl"
-                              fill
-                            />
-                          </motion.div>
-                          <div className="absolute -bottom-1 -right-1 md:-bottom-2 md:-right-2">
-                            <AnimatedRankBadge rating={stats.rating || 1000} size="sm" />
-                          </div>
-                          <StreakFire streak={stats.currentStreak || 0} />
-                        </div>
-
-                        {/* Greeting + Username */}
-                        <div className="min-w-0 flex flex-col items-start text-left">
-                          <motion.p
-                            className="text-surface-400 text-sm md:text-base mb-1 truncate"
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                          >
-                            {getGreeting(user?.username)}
-                          </motion.p>
-                          <motion.h1
-                            className="text-2xl md:text-3xl lg:text-4xl font-bold text-white truncate leading-none"
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: 0.1 }}
-                          >
-                            {user?.username || 'Coder'}
-                          </motion.h1>
-                        </div>
-                      </div>
-
-                      {/* Rating, rank & progress: full width below the avatar row */}
-                      <div className="flex flex-col items-start gap-1.5 w-full">
-                        <motion.div
-                          className="flex items-baseline gap-3"
-                          initial={{ opacity: 0, scale: 0.5 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          transition={{ delay: 0.2, type: 'spring' }}
-                        >
-                          <div className="dashboard-elo-value text-4xl md:text-5xl lg:text-6xl font-black leading-none" style={getRankTextStyle(rankTier)}>
-                            <CountUp end={stats.rating || 1000} duration={2} />
-                          </div>
-                          <span className="text-sm md:text-base text-surface-500 uppercase tracking-[0.18em] leading-none">Elo</span>
-                        </motion.div>
-                        <motion.div
-                          className={`text-base md:text-lg font-black uppercase tracking-[0.14em] ${rankTier.textColor}`}
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          transition={{ delay: 0.3 }}
-                        >
-                          {rankTier.name} Ranking
-                        </motion.div>
-
-                        {/* Progress to next rank: full width */}
-                        {nextRank && (
-                          <motion.div
-                            className="w-full mt-2"
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: 0.4 }}
-                          >
-                            <div className="flex items-baseline justify-between mb-1.5 gap-2">
-                              <span className="text-xs md:text-sm text-surface-400">
-                                Progress to <span className={`font-semibold ${nextRank.textColor}`}>{nextRank.name}</span>
-                              </span>
-                              <span className="text-xs md:text-sm text-surface-300 font-medium whitespace-nowrap">
-                                {nextRank.min - (stats.rating || 1000)} pts to go
-                              </span>
-                            </div>
-                            <div className="h-2.5 md:h-3 bg-surface-700/50 rounded-full overflow-hidden">
-                              <motion.div
-                                className={`h-full bg-gradient-to-r ${rankTier.color} relative`}
-                                initial={{ width: 0 }}
-                                animate={{ width: `${progressToNextRank}%` }}
-                                transition={{ duration: 1, delay: 0.5, ease: 'easeOut' }}
-                              >
-                                <motion.div
-                                  className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
-                                  animate={{ x: ['-100%', '200%'] }}
-                                  transition={{ duration: 2, repeat: Infinity, repeatDelay: 1 }}
-                                />
-                              </motion.div>
-                            </div>
-                            <div className="mt-1 flex justify-between text-[10px] md:text-xs text-surface-500 tabular-nums">
-                              <span>{stats.rating || 1000} ELO</span>
-                              <span>{nextRank.min} ELO</span>
-                            </div>
-                          </motion.div>
-                        )}
-                      </div>
-                    </div>
-
+          <div className="mb-6 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+            <QuickPlaySection />
+            <section aria-labelledby="rating-heading" className="min-w-0 rounded-2xl border border-surface-700/50 bg-surface-900/70 p-5">
+              <div className="flex items-center justify-between gap-3">
+                <h2 id="rating-heading" className="text-sm font-semibold text-surface-200">Battle rating</h2>
+                <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${rankTier.textColor}`}><Shield className="h-3.5 w-3.5" />{rankTier.name}</span>
+              </div>
+              <p className="mt-3 flex items-baseline gap-2"><span className="text-3xl font-semibold tracking-tight tabular-nums text-white">{rating.toLocaleString('en-US')}</span><span className="text-xs text-surface-400">Elo</span></p>
+              {nextRank ? (
+                <div className="mt-4">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-1 text-xs text-surface-300"><span>Next: {nextRank.name}</span><span className="tabular-nums">{nextRank.min - rating} points to go</span></div>
+                  <div role="progressbar" aria-label={`Progress through ${rankTier.name} to ${nextRank.name}`} aria-valuemin={rankTier.min} aria-valuemax={nextRank.min} aria-valuenow={rating} aria-valuetext={`${rating} Elo; ${nextRank.min - rating} points to ${nextRank.name}`} className="h-1.5 overflow-hidden rounded-full bg-surface-700/70">
+                    <div className="h-full rounded-full" style={{ ...getRankSurfaceStyle(rankTier), width: `${progressToNextRank}%` }} />
                   </div>
-
-                  {/* Motivational message */}
-                  <motion.p
-                    className="mt-4 md:mt-6 text-surface-400 text-xs md:text-sm flex items-center gap-2"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.5 }}
-                  >
-                    <Sparkles className="w-4 h-4 text-yellow-400 flex-shrink-0" />
-                    <span className="line-clamp-2">{motivationalMessage}</span>
-                  </motion.p>
-
+                  <div className="mt-1.5 flex justify-between text-[10px] tabular-nums text-surface-400"><span>{rankTier.min} Elo</span><span>{nextRank.min} Elo</span></div>
                 </div>
-              </Card>
-            </TiltCard>
-          </FadeIn>
-
-          {/* Stats Grid - mobile optimized */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
-            <StatCard
-              icon={Trophy}
-              label="Wins"
-              value={stats.wins || 0}
-              color="success"
-              delay={0.1}
-            />
-            <StatCard
-              icon={Target}
-              label="Losses"
-              value={stats.losses || 0}
-              color="danger"
-              delay={0.15}
-            />
-            <StatCard
-              icon={Activity}
-              label="Win Rate"
-              value={`${stats.winRate || 0}%`}
-              color="primary"
-              delay={0.2}
-              highlight={stats.winRate >= 60}
-            />
-            <StatCard
-              icon={Flame}
-              label="Current Streak"
-              value={stats.currentStreak || 0}
-              subValue={stats.bestStreak ? `Best: ${stats.bestStreak}` : null}
-              color="warning"
-              delay={0.25}
-              highlight={stats.currentStreak >= 3}
-            />
+              ) : <p className="mt-3 text-xs text-surface-300">Highest tier reached</p>}
+              <dl className="mt-4 grid grid-cols-3 gap-2 border-t border-surface-700/50 pt-3">
+                {[['Wins', stats.wins || 0], ['Losses', stats.losses || 0], ['Win rate', `${stats.winRate || 0}%`]].map(([label, value]) => (
+                  <div key={label}><dt className="text-[11px] text-surface-400">{label}</dt><dd className="mt-1 text-sm font-semibold tabular-nums text-surface-100">{value}</dd></div>
+                ))}
+              </dl>
+              {(stats.currentStreak > 0 || stats.bestStreak > 0) && <p className="mt-3 flex items-center gap-1.5 text-xs text-surface-300"><Flame className="h-3.5 w-3.5 text-amber-300" />{stats.currentStreak || 0} win streak{stats.bestStreak ? ` · Best ${stats.bestStreak}` : ''}</p>}
+            </section>
           </div>
 
-          {/* Main Content Grid - stacked on mobile */}
+          <RecentActivity activities={recentActivity} promptScoreHistory={promptScoreHistory} />
+
+          <details className="group/progress" open={recentActivity.length > 0 || (dashboardData?.ratingHistory?.length || 0) > 0 || badges.length > 0}>
+            <summary className="mb-4 flex cursor-pointer list-none items-center justify-between rounded-lg py-2 text-sm font-semibold text-surface-300 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-400 [&::-webkit-details-marker]:hidden">
+              Your progress
+              <ChevronDown className="h-4 w-4 transition-transform group-open/progress:rotate-180" />
+            </summary>
           <div className="grid lg:grid-cols-3 gap-4 md:gap-6">
             {/* Left Column */}
             <div className="lg:col-span-2 space-y-4 md:space-y-6">
@@ -2559,6 +2255,7 @@ export default function Dashboard() {
 
             </div>
           </div>
+          </details>
         </main>
       </div>
     </>
