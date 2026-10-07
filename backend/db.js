@@ -11027,7 +11027,10 @@ async function tryConsumeConsumerDailyUsage(resources) {
   const normalized = (Array.isArray(resources) ? resources : []).map(resource => ({
     metric: String(resource.metric || ''),
     subjectId: String(resource.subjectId || ''),
-    limit: Math.max(0, Number.parseInt(resource.limit, 10) || 0)
+    limit: Math.max(0, Number.parseInt(resource.limit, 10) || 0),
+    // Units this use costs; defaults to one. A heavier use (a pricier model)
+    // counts for more against the same daily limit.
+    amount: Math.max(1, Number.parseInt(resource.amount, 10) || 1)
   })).filter(resource => resource.metric && resource.subjectId && resource.limit > 0);
 
   if (normalized.length === 0) {
@@ -11049,7 +11052,7 @@ async function tryConsumeConsumerDailyUsage(resources) {
       usage.push({ ...resource, used });
     }
 
-    const exhausted = usage.find(resource => resource.used >= resource.limit);
+    const exhausted = usage.find(resource => resource.used + resource.amount > resource.limit);
     if (exhausted) {
       return {
         allowed: false,
@@ -11062,17 +11065,17 @@ async function tryConsumeConsumerDailyUsage(resources) {
     for (const resource of normalized) {
       await run(`
         UPDATE consumer_daily_usage
-        SET usage_count = usage_count + 1, updated_at = CURRENT_TIMESTAMP
+        SET usage_count = usage_count + ?, updated_at = CURRENT_TIMESTAMP
         WHERE usage_date = date('now') AND metric = ? AND subject_id = ?
-      `, [resource.metric, resource.subjectId]);
+      `, [resource.amount, resource.metric, resource.subjectId]);
     }
 
     return {
       allowed: true,
       usage: usage.map(resource => ({
         ...resource,
-        used: resource.used + 1,
-        remaining: Math.max(0, resource.limit - resource.used - 1)
+        used: resource.used + resource.amount,
+        remaining: Math.max(0, resource.limit - resource.used - resource.amount)
       }))
     };
   });

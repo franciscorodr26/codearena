@@ -435,7 +435,7 @@ function PromptBattlePage() {
                             >
                               <span className="block font-medium">{model.label}</span>
                               <span className="block text-xs text-surface-500 mt-0.5">
-                                {model.provider}
+                                {PROVIDER_LABELS[model.provider] || model.provider}
                               </span>
                             </button>
                           ))}
@@ -754,6 +754,8 @@ function estimateTokens(text) {
   if (!text) return 0
   return Math.ceil(text.length / 4)
 }
+
+const PROVIDER_LABELS = { anthropic: 'Anthropic', google: 'Google', openai: 'OpenAI' }
 
 function modelLabelById(modelId, models = []) {
   return models.find((m) => m.id === modelId)?.label || modelId

@@ -41,6 +41,26 @@ describe('consumer daily usage', () => {
     expect(await db.getConsumerDailyUsage('code_execution', 'global')).toBe(2)
   })
 
+  it('charges a weighted use its full amount and refuses one that would overrun the limit', async () => {
+    const heavy = [
+      { metric: 'prompt_battle_evaluation', subjectId: 'user:5', limit: 10 },
+      { metric: 'prompt_evaluation', subjectId: 'global', limit: 12, amount: 5 }
+    ]
+    expect((await db.tryConsumeConsumerDailyUsage(heavy)).allowed).toBe(true)
+    expect((await db.tryConsumeConsumerDailyUsage(heavy)).allowed).toBe(true)
+    // 10 of 12 used: another 5 would overrun, even though 2 units remain.
+    expect(await db.tryConsumeConsumerDailyUsage(heavy)).toMatchObject({ allowed: false, reason: 'global_limit' })
+    expect(await db.getConsumerDailyUsage('prompt_evaluation', 'global')).toBe(10)
+    // The per-player count moves by one per use, and not at all when refused.
+    expect(await db.getConsumerDailyUsage('prompt_battle_evaluation', 'user:5')).toBe(2)
+    // A light use still fits in the remaining 2.
+    const light = await db.tryConsumeConsumerDailyUsage([
+      { metric: 'prompt_evaluation', subjectId: 'global', limit: 12 }
+    ])
+    expect(light).toMatchObject({ allowed: true })
+    expect(light.usage[0]).toMatchObject({ used: 11, remaining: 1 })
+  })
+
   it('does not consume a user allowance when the global circuit breaker is exhausted', async () => {
     await db.tryConsumeConsumerDailyUsage([
       { metric: 'prompt_evaluation', subjectId: 'global', limit: 1 }

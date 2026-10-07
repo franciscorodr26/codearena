@@ -5,6 +5,7 @@ jest.mock('../db', () => ({
 jest.mock('../services/promptBattleRunner', () => ({
   runPlayerModel: jest.fn(async () => ({ text: 'Output', inputTokens: 1, outputTokens: 1, totalTokens: 2 })),
   countPromptTokens: jest.fn(async () => 1),
+  getModelQuotaCost: jest.fn(() => 1),
   getAvailablePromptBattleModels: jest.fn(() => [{ id: 'test-model' }]),
   getDefaultPromptBattleModelId: jest.fn(() => 'test-model'),
   sanitizeModelId: jest.fn(() => 'test-model')

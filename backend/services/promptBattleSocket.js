@@ -5,6 +5,7 @@ const {
   countPromptTokens,
   getAvailablePromptBattleModels,
   getDefaultPromptBattleModelId,
+  getModelQuotaCost,
   sanitizeModelId
 } = require('./promptBattleRunner')
 const { evaluateModelOutputTiered } = require('./promptModelOutputScore')
@@ -35,12 +36,13 @@ const promptRoomCreationAttempts = new Map()
 /** Flagged submissions (e.g. paste detected) get their adjusted score capped at this %. */
 const PASTE_FLAG_SCORE_CAP = 20
 
-async function consumePromptBattleModelQuota(userId) {
+async function consumePromptBattleModelQuota(userId, modelId) {
   const userLimit = getConsumerFairUseLimit('promptBattleModelCallsPerDay')
   const globalLimit = getConsumerFairUseLimit('globalPromptEvaluationsPerDay')
   const quota = await db.tryConsumeConsumerDailyUsage([
     { metric: 'prompt_battle_evaluation', subjectId: `user:${userId}`, limit: userLimit },
-    { metric: 'prompt_evaluation', subjectId: 'global', limit: globalLimit }
+    // Pricier models use more of the shared daily budget.
+    { metric: 'prompt_evaluation', subjectId: 'global', limit: globalLimit, amount: getModelQuotaCost(sanitizeModelId(modelId)) }
   ])
   if (!quota.allowed) {
     const error = new Error(quota.reason === 'global_limit'
@@ -251,7 +253,7 @@ async function runPreviewForSubmission({ io, room, roomCode, playerKey, submissi
   })
 
   try {
-    await consumePromptBattleModelQuota(playerKey)
+    await consumePromptBattleModelQuota(playerKey, room.modelId)
     const promptTokens = await countPromptTokens(room.problem, promptText, { modelId: room.modelId })
     const result = await runPlayerModel(room.problem, promptText, { modelId: room.modelId })
     const modelOutput = result.text
@@ -581,7 +583,7 @@ async function finalizeRoom(code, io) {
           scorePercent = p.previewCache.scorePercent || 0
           tierDetail = p.previewCache.tierDetail
         } else {
-          await consumePromptBattleModelQuota(userId)
+          await consumePromptBattleModelQuota(userId, room.modelId)
           promptTokens = await countPromptTokens(room.problem, promptText, { modelId: room.modelId })
           const result = await runPlayerModel(room.problem, promptText, { modelId: room.modelId })
           modelOutput = result.text

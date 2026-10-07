@@ -29,6 +29,7 @@ jest.mock('../services/promptBattleRunner', () => ({
     totalTokens: 46
   })),
   countPromptTokens: jest.fn(async () => 10),
+  getModelQuotaCost: jest.fn(() => 1),
   getAvailablePromptBattleModels: jest.fn(() => [
     { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', provider: 'anthropic' }
   ]),
