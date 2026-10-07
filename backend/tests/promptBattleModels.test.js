@@ -4,7 +4,7 @@
 const mockCreate = jest.fn()
 jest.mock('@anthropic-ai/sdk', () => jest.fn().mockImplementation(() => ({ messages: { create: mockCreate } })))
 
-const KEYS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY']
+const KEYS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'DEEPSEEK_API_KEY', 'OPENAI_PREMIUM_MODEL', 'OPENAI_PREMIUM_MODEL_LABEL']
 
 function loadRunner(env) {
   jest.resetModules()
@@ -99,5 +99,37 @@ describe('prompt battle models', () => {
     const runner = loadRunner({ ANTHROPIC_API_KEY: 'a' })
     mockCreate.mockReset().mockResolvedValue({ content: [{ type: 'thinking', thinking: '...' }], usage: {} })
     await expect(runner.runPlayerModel({}, 'p', { modelId: 'claude-opus-5-5' })).rejects.toThrow('Empty model response')
+  })
+
+  test('Sol appears only when both the OpenAI key and OPENAI_PREMIUM_MODEL are set, and costs like Opus', () => {
+    expect(loadRunner({ OPENAI_API_KEY: 'o' }).getAvailablePromptBattleModels().map(m => m.id)).toEqual(['gpt-4o-mini'])
+    expect(loadRunner({ OPENAI_PREMIUM_MODEL: 'gpt-6.1-sol' }).getAvailablePromptBattleModels()).toEqual([])
+    const runner = loadRunner({ OPENAI_API_KEY: 'o', OPENAI_PREMIUM_MODEL: 'gpt-6.1-sol', OPENAI_PREMIUM_MODEL_LABEL: 'GPT-6.1 Sol' })
+    expect(runner.getAvailablePromptBattleModels()).toEqual([
+      { id: 'gpt-4o-mini', label: 'GPT-4o mini', provider: 'openai' },
+      { id: 'gpt-6.1-sol', label: 'GPT-6.1 Sol', provider: 'openai' }
+    ])
+    expect(runner.getModelQuotaCost('gpt-6.1-sol')).toBe(5)
+  })
+
+  test('OpenAI requests use max_completion_tokens; DeepSeek uses its own endpoint and max_tokens', async () => {
+    const reply = { ok: true, json: async () => ({ choices: [{ message: { content: 'answer' } }], usage: { prompt_tokens: 5, completion_tokens: 7, total_tokens: 12 } }) }
+    global.fetch = jest.fn(async () => reply)
+
+    const openai = loadRunner({ OPENAI_API_KEY: 'o', OPENAI_PREMIUM_MODEL: 'gpt-6.1-sol' })
+    await expect(openai.runPlayerModel({}, 'p', { modelId: 'gpt-6.1-sol' })).resolves.toMatchObject({ text: 'answer', totalTokens: 12 })
+    let [url, init] = global.fetch.mock.calls[0]
+    expect(url).toBe('https://api.openai.com/v1/chat/completions')
+    expect(JSON.parse(init.body)).toMatchObject({ model: 'gpt-6.1-sol', max_completion_tokens: 2048 })
+    expect(JSON.parse(init.body)).not.toHaveProperty('max_tokens')
+
+    global.fetch.mockClear()
+    const deepseek = loadRunner({ DEEPSEEK_API_KEY: 'd' })
+    expect(deepseek.getAvailablePromptBattleModels()).toEqual([{ id: 'deepseek-chat', label: 'DeepSeek', provider: 'deepseek' }])
+    await deepseek.runPlayerModel({}, 'p', { modelId: 'deepseek-chat' });
+    [url, init] = global.fetch.mock.calls[0]
+    expect(url).toBe('https://api.deepseek.com/chat/completions')
+    expect(init.headers.Authorization).toBe('Bearer d')
+    expect(JSON.parse(init.body)).toMatchObject({ model: 'deepseek-chat', max_tokens: 2048 })
   })
 })

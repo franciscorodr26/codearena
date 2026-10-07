@@ -40,13 +40,30 @@ const MODEL_CATALOG = [
     quotaCost: 1
   },
   {
-    id: 'gpt-4o-mini',
-    label: 'GPT-4o mini',
+    id: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+    label: process.env.OPENAI_MODEL_LABEL || 'GPT-4o mini',
     provider: 'openai',
     envVar: 'OPENAI_API_KEY',
     quotaCost: 1
+  },
+  // OpenAI's frontier model (for example GPT-6.1 Sol). Offered only when
+  // OPENAI_PREMIUM_MODEL names it; priced like Opus.
+  {
+    id: process.env.OPENAI_PREMIUM_MODEL || '',
+    label: process.env.OPENAI_PREMIUM_MODEL_LABEL || process.env.OPENAI_PREMIUM_MODEL || '',
+    provider: 'openai',
+    envVar: 'OPENAI_PREMIUM_MODEL',
+    requiresEnv: ['OPENAI_API_KEY'],
+    quotaCost: 5
+  },
+  {
+    id: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
+    label: process.env.DEEPSEEK_MODEL_LABEL || 'DeepSeek',
+    provider: 'deepseek',
+    envVar: 'DEEPSEEK_API_KEY',
+    quotaCost: 1
   }
-]
+].filter((model) => model.id)
 const DEFAULT_MODEL_ID = 'claude-haiku-4-5'
 const MAX_OUT = 2048
 
@@ -59,6 +76,10 @@ function getModelById(modelId) {
   return MODEL_CATALOG.find((m) => m.id === modelId) || MODEL_CATALOG.find((m) => m.id === DEFAULT_MODEL_ID)
 }
 
+function isModelConfigured(model) {
+  return [model.envVar, ...(model.requiresEnv || [])].every((name) => Boolean(process.env[name]))
+}
+
 // How much one run of this model counts against the global daily budget.
 function getModelQuotaCost(modelId) {
   const model = MODEL_CATALOG.find((m) => m.id === modelId)
@@ -66,7 +87,7 @@ function getModelQuotaCost(modelId) {
 }
 
 function getAvailablePromptBattleModels() {
-  return MODEL_CATALOG.filter((m) => Boolean(process.env[m.envVar])).map((m) => ({
+  return MODEL_CATALOG.filter((m) => isModelConfigured(m)).map((m) => ({
     id: m.id,
     label: m.label,
     provider: m.provider
@@ -142,28 +163,34 @@ ${problem.targetOutput || 'A structured, actionable deliverable.'}`
     }
   }
 
-  if (model.provider === 'openai') {
-    if (!process.env.OPENAI_API_KEY) {
-      throw new Error('OPENAI_API_KEY is not configured')
+  if (model.provider === 'openai' || model.provider === 'deepseek') {
+    const isOpenAI = model.provider === 'openai'
+    const apiKey = isOpenAI ? process.env.OPENAI_API_KEY : process.env.DEEPSEEK_API_KEY
+    if (!apiKey) {
+      throw new Error(`${isOpenAI ? 'OPENAI_API_KEY' : 'DEEPSEEK_API_KEY'} is not configured`)
     }
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const url = isOpenAI
+      ? 'https://api.openai.com/v1/chat/completions'
+      : 'https://api.deepseek.com/chat/completions'
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         model: model.id,
-        max_tokens: MAX_OUT,
+        // Current OpenAI models accept only max_completion_tokens; DeepSeek uses max_tokens.
+        ...(isOpenAI ? { max_completion_tokens: MAX_OUT } : { max_tokens: MAX_OUT }),
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: user.slice(0, 12000) }
         ]
       })
     })
-    const data = await response.json()
+    const data = await response.json().catch(() => null)
     if (!response.ok) {
-      throw new Error(data?.error?.message || 'OpenAI request failed')
+      throw new Error(data?.error?.message || `${isOpenAI ? 'OpenAI' : 'DeepSeek'} request failed`)
     }
     const text = data?.choices?.[0]?.message?.content
     if (!text) {

@@ -755,7 +755,7 @@ function estimateTokens(text) {
   return Math.ceil(text.length / 4)
 }
 
-const PROVIDER_LABELS = { anthropic: 'Anthropic', google: 'Google', openai: 'OpenAI' }
+const PROVIDER_LABELS = { anthropic: 'Anthropic', google: 'Google', openai: 'OpenAI', deepseek: 'DeepSeek' }
 
 function modelLabelById(modelId, models = []) {
   return models.find((m) => m.id === modelId)?.label || modelId
