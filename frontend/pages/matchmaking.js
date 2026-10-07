@@ -412,10 +412,10 @@ function Matchmaking() {
                         <div className="text-center">
                           <p className="text-surface-500 text-sm mb-3">or</p>
                           <div className="flex justify-center space-x-4">
-                            <Link href="/practice" className="text-primary-400 hover:text-primary-300 text-sm font-medium">
+                            <Link href={quickBattleMode === 'prompt' ? '/prompt-practice' : '/practice'} className="text-primary-400 hover:text-primary-300 text-sm font-medium">
                               Practice Solo
                             </Link>
-                            <Link href="/battle" className="text-secondary-400 hover:text-secondary-300 text-sm font-medium">
+                            <Link href={quickBattleMode === 'prompt' ? '/prompt-battle' : '/battle'} className="text-secondary-400 hover:text-secondary-300 text-sm font-medium">
                               Private Battle
                             </Link>
                           </div>
