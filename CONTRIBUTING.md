@@ -15,6 +15,14 @@ Thanks for helping. The two most useful contributions are bug reports with steps
 3. Run `cd backend && npm run validate:problems`. Both references must pass every example and test.
 4. Problems must be your own work. Do not copy statements or tests from other sites or from any private problem bank.
 
+## Adding a language
+
+Players can write Python, JavaScript or TypeScript today. Java, C++ and Go
+are open for contributors, each with a full guide in its issue:
+[Java (#1)](https://github.com/sennaicodes/codearena/issues/1),
+[C++ (#2)](https://github.com/sennaicodes/codearena/issues/2) and
+[Go (#3)](https://github.com/sennaicodes/codearena/issues/3), which is the easiest place to start.
+
 ## Running the checks
 
 ```bash
