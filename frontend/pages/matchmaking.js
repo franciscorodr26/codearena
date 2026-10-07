@@ -18,6 +18,7 @@ import logger from '../utils/logger';
 // Import UI components
 import Button from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
+import { providerLabel } from '../utils/modelProviders'
 // FloatingOrbs and Float removed for cleaner design
 
 function Matchmaking() {
@@ -381,7 +382,7 @@ function Matchmaking() {
                                     }`}
                                   >
                                     <span className="block font-medium">{model.label}</span>
-                                    <span className="block text-xs text-surface-500 mt-0.5">{model.provider}</span>
+                                    <span className="block text-xs text-surface-500 mt-0.5">{providerLabel(model.provider)}</span>
                                   </button>
                                 ))}
                               </div>

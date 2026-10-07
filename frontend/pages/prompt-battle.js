@@ -11,6 +11,7 @@ import { withAuth } from '../components/withAuth'
 import Button from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import PromptBattleHistory from '../components/PromptBattleHistory'
+import { providerLabel } from '../utils/modelProviders'
 
 const DURATION_LABELS = {
   5: { difficulty: 'Easy', hint: '5 min · Easy problem' },
@@ -435,7 +436,7 @@ function PromptBattlePage() {
                             >
                               <span className="block font-medium">{model.label}</span>
                               <span className="block text-xs text-surface-500 mt-0.5">
-                                {PROVIDER_LABELS[model.provider] || model.provider}
+                                {providerLabel(model.provider)}
                               </span>
                             </button>
                           ))}
@@ -754,8 +755,6 @@ function estimateTokens(text) {
   if (!text) return 0
   return Math.ceil(text.length / 4)
 }
-
-const PROVIDER_LABELS = { anthropic: 'Anthropic', google: 'Google', openai: 'OpenAI', deepseek: 'DeepSeek' }
 
 function modelLabelById(modelId, models = []) {
   return models.find((m) => m.id === modelId)?.label || modelId
