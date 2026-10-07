@@ -15,7 +15,7 @@ coverage reports, images and JSON data files are excluded.
 | Person | Commits | Lines added | Lines removed | Active | Files they primarily wrote (in this edition) | Main areas |
 |---|---|---|---|---|---|---|
 | [Sennai Kaffl](https://github.com/sennaicodes) | 1,709 | 431,139 | 213,755 | 2025-08-29 to 2026-09-25 | 330 | frontend/pages, backend, backend/routes |
-| [Tanish Thumbraguddi](https://github.com/tthumbra) | 192 | 24,378 | 7,105 | 2026-04-12 to 2026-06-29 | 25 | docs/superpowers, backend/tests, backend/services |
+| [Tanish Thumbraguddi](https://github.com/tthumbra) | 192 | 24,378 | 7,105 | 2026-04-12 to 2026-06-29 | 24 | docs/superpowers, backend/tests, backend/services |
 | [Vincent Lo](https://github.com/vincentlo12) | 169 | 52,857 | 6,150 | 2026-02-05 to 2026-06-26 | 8 | backend/scripts, frontend/pages, backend |
 | [Bradley Tsou](https://github.com/brad945) | 158 | 18,740 | 5,192 | 2026-03-22 to 2026-06-26 | 28 | frontend/pages, backend/tests, frontend/components |
 | [Teoman Yavuzkurt](https://github.com/TedYav) | 17 | 2,684 | 278 | 2025-09-20 to 2025-10-03 | 6 | backend, backend/tests, frontend/pages |
