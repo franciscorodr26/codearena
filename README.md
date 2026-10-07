@@ -87,7 +87,7 @@ Supported languages: JavaScript, Python and TypeScript. Adding a language means 
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Bug reports and problem submissions are the most useful things you can bring. Please report security issues privately as described in [SECURITY.md](SECURITY.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md). Maintainers: [MAINTAINING.md](MAINTAINING.md) covers deploys, reviews, costs and what to do when something breaks. Bug reports and problem submissions are the most useful things you can bring. Please report security issues privately as described in [SECURITY.md](SECURITY.md).
 
 ## License
 

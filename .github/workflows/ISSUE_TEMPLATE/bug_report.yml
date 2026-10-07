@@ -1,0 +1,43 @@
+name: Bug Report
+description: Create a report to help us improve CodeArena
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to reproduce the behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: expected-actual
+    attributes:
+      label: Expected vs Actual Behavior
+      description: What you expected to happen vs what actually happened.
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser
+      description: What browser are you using? (e.g., Chrome, Firefox, Safari)
+    validations:
+      required: true
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Deployment Type
+      description: Is this codearena.co or a self-hosted copy?
+      options:
+        - codearena.co
+        - Self-hosted copy
+    validations:
+      required: true

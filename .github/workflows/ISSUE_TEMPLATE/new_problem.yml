@@ -1,0 +1,36 @@
+name: New Problem
+description: Propose a new coding problem for CodeArena
+title: "[Problem]: "
+labels: ["enhancement", "problem"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: Problem Idea
+      description: Describe the problem idea, statement, and examples.
+    validations:
+      required: true
+  - type: dropdown
+    id: difficulty
+    attributes:
+      label: Difficulty
+      options:
+        - Easy
+        - Medium
+        - Hard
+    validations:
+      required: true
+  - type: input
+    id: tags
+    attributes:
+      label: Tags
+      description: E.g., arrays, sorting, dynamic-programming
+    validations:
+      required: true
+  - type: checkboxes
+    id: originality
+    attributes:
+      label: Original Work Confirmation
+      options:
+        - label: I confirm that this problem is of my own original work.
+          required: true

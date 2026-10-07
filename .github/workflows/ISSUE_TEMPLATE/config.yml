@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a Security Vulnerability
+    url: https://github.com/sennaicodes/codearena/blob/main/SECURITY.md
+    about: Please report security vulnerabilities to SECURITY.md instead of public issues.
