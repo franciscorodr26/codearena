@@ -10,13 +10,13 @@ CodeArena is an open-source project (AGPL-3.0). It runs the public site at [code
 - **Matchmaking and bots.** Queue for an opponent at your rating, or fight a bot that submits a real solution.
 - **Practice warm-ups.** Quick problems while you wait in the queue, before a battle, or after one to retry without a clock.
 - **Agent battles.** Build an AI agent loadout (model, prompt, tools) and race other players' agents on the same problem, with live spectating, replays, training runs, challenges, tournaments and an agent leaderboard. Off by default because every battle calls a model API: set `CODEARENA_AGENT_BATTLES=1` and `ANTHROPIC_API_KEY` to turn them on.
-- **Prompt battles and prompt practice.** Write the prompt, a model answers, the reply is scored. Needs a model API key; without one the mode says so and stays off.
+- **Prompt battles and prompt practice.** Write the prompt, a model answers, the reply is scored. Players pick the model: Claude (Haiku, Sonnet, Opus), GPT, Gemini or DeepSeek, whichever have keys configured. Without a model key the mode says so and stays off.
 - **Friends, challenges, messages, tournaments, rankings, badges.** The social layer that makes it a place rather than a tool.
 - **CreatorArena.** Make small browser games with AI help and publish them to the gallery.
 
 ## Quick start
 
-You need Node 22+, and a [Judge0](https://github.com/judge0/judge0) server to run player code safely. For development you can skip Judge0 and run code directly on your machine (not safe for anything public).
+You need Node 20 or 22, and a [Judge0](https://github.com/judge0/judge0) server to run player code safely. For development you can skip Judge0 and run code directly on your machine (not safe for anything public).
 
 ```bash
 # backend
@@ -53,6 +53,7 @@ Everything is read from environment variables; `backend/.env.example` and `front
 | `JUDGE0_URL` or `RAPIDAPI_KEY` | Running player code (battles, practice). |
 | `CODEARENA_RUNNER=local` | Development only: runs code on the host with no sandbox. Refused in production. |
 | `ANTHROPIC_API_KEY` | Prompt battles, prompt practice, agent battles, complexity feedback, CreatorArena generation. |
+| `OPENAI_API_KEY`, `GEMINI_API_KEY`, `DEEPSEEK_API_KEY` | Extra prompt battle models (optional). `backend/.env.example` lists the model settings. |
 | `CODEARENA_AGENT_BATTLES=1` | Turns agent battles on (also needs `ANTHROPIC_API_KEY`). |
 | `RESEND_API_KEY` | Email: verification, password reset, notifications. |
 | `GOOGLE_CLIENT_ID`, `GITHUB_CLIENT_ID`/`_SECRET` | Social sign-in. |
@@ -75,7 +76,7 @@ Adding a problem is the best first contribution. [backend/arena/docs/problems.md
 
 Everything in this repository is public, including tests, so a determined player could hard-code answers. If you run ranked battles, keep an extra private set in a directory laid out like `backend/arena/` and set `CODEARENA_PRIVATE_PROBLEMS_DIR` to it. The bots will find solutions there too.
 
-Supported languages at launch: JavaScript, Python and TypeScript. Adding a language means adding a driver in `backend/arena/runner/harness.js`.
+Supported languages: JavaScript, Python and TypeScript. Adding a language means adding a driver in `backend/arena/runner/harness.js`; Java, C++ and Go are open for contributors ([#1](https://github.com/sennaicodes/codearena/issues/1), [#2](https://github.com/sennaicodes/codearena/issues/2), [#3](https://github.com/sennaicodes/codearena/issues/3)).
 
 ## How it is built
 

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import Logo from './Logo';
-import { Linkedin, ArrowUp } from 'lucide-react';
+import { Linkedin, Github, ArrowUp } from 'lucide-react';
 import { config } from '../config/env';
 
 export default function Footer({ onFeedbackClick, onBugReportClick, onFeatureRequestClick }) {
@@ -57,6 +57,15 @@ export default function Footer({ onFeedbackClick, onBugReportClick, onFeatureReq
             >
               <Linkedin className="h-4 w-4" />
               <span>Follow us</span>
+            </a>
+            <a
+              href="https://github.com/sennaicodes/codearena"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-3 flex w-fit items-center gap-2 text-sm text-surface-400 hover:text-primary-400 transition-colors duration-200"
+            >
+              <Github className="h-4 w-4" />
+              <span>Open source on GitHub</span>
             </a>
           </div>
 

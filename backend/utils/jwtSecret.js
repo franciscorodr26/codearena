@@ -18,9 +18,17 @@
 const crypto = require('crypto');
 const logger = require('./logger');
 
+const EXAMPLE_SECRETS = new Set(['your-super-secret-jwt-key-change-this']);
+
 function resolveSecret() {
   const envSecret = process.env.JWT_SECRET;
   if (envSecret) {
+    // The example value is public; anyone could sign tokens with it.
+    if (process.env.NODE_ENV === 'production' && EXAMPLE_SECRETS.has(envSecret.trim())) {
+      throw new Error(
+        'CRITICAL: JWT_SECRET is still the example value from .env.example. Generate a long random secret.'
+      );
+    }
     return envSecret;
   }
 
